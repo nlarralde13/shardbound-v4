@@ -56,6 +56,10 @@ body{
   pointer-events:none;
 }
 
+.overlay.interactive{
+  pointer-events:auto;
+}
+
 #ui-panel{
   flex: 0 0 45%;
   background: var(--panel);

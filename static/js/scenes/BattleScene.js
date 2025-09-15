@@ -13,6 +13,7 @@ export class BattleScene {
     const mk=(label,action)=>{ const b=document.createElement('button'); b.className='btn primary'; b.textContent=label; b.onclick=()=>this.takeAction(action); return b; };
     row.append(mk('Attack','attack'), mk('Skill','skill'), mk('Item','item'), mk('Flee','flee'));
     this.buttons=row; this.m.overlayEl.appendChild(row);
+    this.m.overlayEl.classList.add('interactive');
   }
   async takeAction(action){
     const res=await API.postBattleAction(action);
@@ -43,5 +44,8 @@ export class BattleScene {
     const pct=Math.max(0,Math.min(1,v/vmax)); ctx.fillStyle='#5cc8ff'; ctx.fillRect(x,y,Math.floor(w*pct),h);
     const tx=right?x+w-2:x+2; this.m.drawText(`${label} ${v}/${vmax}`, tx, y-6, '#e6e8ed', 12);
   }
-  teardown(){ if(this.buttons?.parentElement) this.buttons.parentElement.removeChild(this.buttons); }
+  teardown(){
+    if(this.buttons?.parentElement) this.buttons.parentElement.removeChild(this.buttons);
+    this.m.overlayEl.classList.remove('interactive');
+  }
 }

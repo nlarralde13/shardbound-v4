@@ -18,8 +18,11 @@ export class SceneManager {
   switchTo(name, data={}){
     if(!this.registry.has(name)) throw new Error(`Scene ${name} not registered`);
     this.current?.teardown?.();
-    this.current = this.registry.get(name)(); this.current?.setup?.(data);
-    this.store.update('scene.name', name); this.store.update('scene.data', data);
+    this.overlayEl.classList.remove('interactive');
+    this.overlayEl.replaceChildren();
+    this.current = this.registry.get(name)();
+    this.current?.setup?.(data);
+    this.store.update('scene', { name, data });
   }
   drawText(text, x, y, color='#e6e8ed', size=16){
     const dpr = window.devicePixelRatio || 1;

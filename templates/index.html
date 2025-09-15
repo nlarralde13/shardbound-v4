@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Shardbound v4 — Prototype Client</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <div id="app">
+    <section id="scene-viewer" aria-live="polite">
+      <canvas id="scene-canvas" width="360" height="260" role="img" aria-label="Scene viewer"></canvas>
+      <div id="scene-overlay" class="overlay"></div>
+    </section>
+
+    <section id="ui-panel">
+      <nav id="tabbar" class="tabbar" aria-label="Main tabs">
+        <button data-tab="inventory" class="tab active" aria-selected="true">Inventory</button>
+        <button data-tab="character" class="tab">Character</button>
+        <button data-tab="map" class="tab">Map</button>
+        <button data-tab="quests" class="tab">Quests</button>
+        <button data-tab="settings" class="tab">Settings</button>
+      </nav>
+      <div id="tab-content" class="tab-content" role="region" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

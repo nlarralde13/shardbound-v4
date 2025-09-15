@@ -1,0 +1,124 @@
+:root{
+  --bg:#0e0f12;         /* dark neutral */
+  --panel:#171a20;      /* panel surface */
+  --panel-2:#1d2129;
+  --text:#e6e8ed;
+  --muted:#9aa3b2;
+  --accent:#5cc8ff;     /* soft cyan accent */
+  --accent-2:#b392f0;   /* lilac alt */
+  --ring: rgba(92,200,255,0.35);
+}
+
+*{ box-sizing:border-box; }
+html,body { height:100%; }
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app{
+  /* Vertical-first: top = scene viewer, bottom = tabs */
+  display:flex;
+  flex-direction:column;
+  height:100svh;
+  max-width: 480px; /* phone-first; scales nicely on desktop too */
+  margin: 0 auto;
+  border-left: 1px solid #000;
+  border-right: 1px solid #000;
+}
+
+#scene-viewer{
+  position:relative;
+  flex: 1 1 55%;
+  background: linear-gradient(180deg, #111318 0%, #0e0f12 100%);
+  display:grid;
+  place-items:center;
+  border-bottom: 1px solid #0a0c10;
+}
+
+#scene-canvas{
+  width: 95%;
+  height: auto;
+  max-height: 100%;
+  border-radius: 16px;
+  background: #0a0c10;
+  outline: 1px solid #1b2028;
+  box-shadow:
+    0 0 0 1px var(--ring),
+    0 12px 30px rgba(0,0,0,0.35);
+}
+
+.overlay{
+  position:absolute;
+  inset: 8px;
+  pointer-events:none;
+}
+
+#ui-panel{
+  flex: 0 0 45%;
+  background: var(--panel);
+  display:flex;
+  flex-direction:column;
+  border-top: 1px solid #0a0c10;
+}
+
+.tabbar{
+  display:flex;
+  gap:6px;
+  padding: 10px;
+  background: var(--panel-2);
+  position: sticky;
+  top:0;
+  z-index:10;
+}
+
+.tab{
+  flex:1;
+  padding:10px 6px;
+  border: 1px solid #222733;
+  border-radius: 10px;
+  background:#11141a;
+  color: var(--muted);
+  font-weight:600;
+}
+.tab[aria-selected="true"],
+.tab.active{
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring) inset;
+}
+
+.tab-content{
+  flex:1;
+  overflow:auto;
+  padding: 12px;
+}
+
+/* Basic listy look for tabs */
+.panel-card{
+  background:#0f1218;
+  border: 1px solid #1c2230;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.kv{
+  display:flex; justify-content:space-between; gap:10px;
+  font-size: 0.95rem;
+}
+
+.button-row{
+  display:flex; gap:8px; flex-wrap:wrap;
+}
+.btn{
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid #2a3142;
+  background:#121621;
+  color:var(--text);
+}
+.btn.primary{ border-color: var(--accent); }
+.btn.ghost{ background:transparent; color:var(--muted); }

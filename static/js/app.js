@@ -23,9 +23,11 @@ sceneManager.switchTo('map');
 
 initTabs(store, sceneManager);
 
-// Dev helpers
-window.sb = {
+// Dev helpers: merge onto any existing helpers so other modules (like MapTab)
+// can attach their own utilities without getting overwritten here.
+window.sb = window.sb || {};
+Object.assign(window.sb, {
   toMap:    () => sceneManager.switchTo('map'),
   toBattle: () => sceneManager.switchTo('battle', { enemy:'Slime' }),
   toTown:   () => sceneManager.switchTo('town', { name:'Oakford' }),
-};
+});

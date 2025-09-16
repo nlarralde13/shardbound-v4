@@ -3,7 +3,7 @@
 // Wires "Look Around" to a tiny exploration engine and exposes sb.explore for rigging.
 // Logs each step so you can trace flow easily.
 
-import { createExploration } from './exploration.js';
+import { createExploration } from './ui/tabs/exploration.js';
 
 export class MapTab {
   constructor(store, sm) {

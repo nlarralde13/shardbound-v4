@@ -1,6 +1,6 @@
 import { InventoryTab } from './tabs/InventoryTab.js';
 import { CharacterTab } from './tabs/CharacterTab.js';
-import { MapTab } from './tabs/MapTab.js';
+import { MapTab } from '../MapTab.js';
 import { QuestsTab } from './tabs/QuestsTab.js';
 import { SettingsTab } from './tabs/SettingsTab.js';
 

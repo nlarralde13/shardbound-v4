@@ -1,51 +1,356 @@
-import { API } from '../api/client.js';
+// BattleScene.js
+// v4 prototype battle scene
+// - Reads player class/level from the Store (set in app.js via ?class=...&lvl=...)
+// - Loads /assets/catalog/classes/<classId>.json
+// - Builds an action bar from unlocked skills + basic Attack/Defend
+// - Executes simple effects (damage/heal/buff/shield/taunt/slow) and logs turns
+// - Minimal enemy AI: basic attack back after the player acts
+
+import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
 
 export class BattleScene {
-  constructor(manager, store){
-    this.m=manager; this.store=store; this.t=0;
-    this.log=['A wild Slime appears!']; this.enemy={ name:'Slime', hp:20, hpMax:20 };
-    this.buttons=null;
+  /**
+   * @param {SceneManager} sm
+   * @param {Store} store
+   */
+  constructor(sm, store) {
+    this.sm = sm;
+    this.store = store;
+
+    // UI roots attached to the SceneManager's overlay if present
+    this.uiRoot = null;
+    this.actionBarEl = null;
+    this.logEl = null;
+
+    // Runtime entities
+    this.player = null;   // alias to store.get().player (snapshot + live)
+    this.enemy  = null;   // simple demo enemy
+    this.actionBar = [];  // list of skill objects
+    this.turnLock = false;
   }
-  setup(data){
-    if(data?.enemy) this.enemy.name=data.enemy;
-    const row=document.createElement('div');
-    row.className='button-row'; Object.assign(row.style,{position:'absolute',left:'12px',right:'12px',bottom:'12px',pointerEvents:'auto'});
-    const mk=(label,action)=>{ const b=document.createElement('button'); b.className='btn primary'; b.textContent=label; b.onclick=()=>this.takeAction(action); return b; };
-    row.append(mk('Attack','attack'), mk('Skill','skill'), mk('Item','item'), mk('Flee','flee'));
-    this.buttons=row; this.m.overlayEl.appendChild(row);
-    this.m.overlayEl.classList.add('interactive');
-  }
-  async takeAction(action){
-    const res=await API.postBattleAction(action);
-    if(res.ok){
-      this.log.push(res.log);
-      this.enemy.hp=Math.max(0,this.enemy.hp-Math.floor(Math.random()*6+3));
-      if(this.enemy.hp===0){
-        this.log.push('Enemy defeated! +5 gold');
-        const s=this.store.get(); this.store.update('player.gold', s.player.gold+5);
-        setTimeout(()=>this.m.switchTo('map'), 600);
-      }
+
+  // --- Scene lifecycle ------------------------------------------------------
+
+  async onEnter() {
+    // Resolve live player reference
+    this.player = this.store.get().player;
+
+    // Build UI container
+    this._mountUI();
+
+    // Spawn a demo enemy (replace with your encounter payload if provided)
+    // If the scene was switched to with payload { encounter }, use it:
+    const payload = this.sm.getPayload?.() || {};
+    this.enemy = payload.encounter || { id: 'slime', name: 'Gloomslick Slime', level: 1, hp: 20, atk: 5, def: 2, spd: 3 };
+
+    this._renderHeader();
+    this._log(`⚔️ A wild ${this.enemy.name} (Lv.${this.enemy.level}) appears!`);
+
+    // Load class kit
+    const classId = (this.player.classId || 'warrior').toLowerCase();
+    const level   = Math.max(1, this.player.level || 1);
+
+    try {
+      const catalog = await loadClassCatalog(classId);
+      const kit = skillsAvailableAtLevel(catalog, level);
+
+      // Always-available basics
+      const basics = [
+        { id: 'basic_attack', name: 'Attack', type: 'attack', target: 'enemy', effects: [{ kind: 'damage', formula: 'atk*0.8' }] },
+        { id: 'defend', name: 'Defend', type: 'buff', target: 'self', effects: [{ kind: 'buff', stat: 'def', amount: 2, duration: 1 }] }
+      ];
+
+      this.actionBar = [...basics, ...kit];
+      this._renderActionBar();
+      this._log(`Class loaded: ${catalog.class?.name ?? classId} (Lv.${level}). Actions ready.`);
+    } catch (err) {
+      console.error('[BattleScene] class load failed:', err);
+      this._log('No class catalog found. Using basic actions.');
+      this.actionBar = [
+        { id: 'basic_attack', name: 'Attack', type: 'attack', target: 'enemy', effects: [{ kind: 'damage', formula: 'atk*0.8' }] },
+        { id: 'defend', name: 'Defend', type: 'buff', target: 'self', effects: [{ kind: 'buff', stat: 'def', amount: 2, duration: 1 }] }
+      ];
+      this._renderActionBar();
     }
   }
-  update(t){ this.t=t; }
-  render(ctx){
-    const { width:w, height:h }=ctx.canvas; ctx.clearRect(0,0,w,h);
-    const grd=ctx.createLinearGradient(0,0,0,h); grd.addColorStop(0,'#0d1016'); grd.addColorStop(1,'#121726');
-    ctx.fillStyle=grd; ctx.fillRect(0,0,w,h);
-    this.drawBar(ctx,24,24,220,14,'You',this.store.get().player.hp,this.store.get().player.hpMax);
-    this.drawBar(ctx,w-244,24,220,14,this.enemy.name,this.enemy.hp,this.enemy.hpMax,true);
-    ctx.fillStyle='#b392f0'; ctx.beginPath(); ctx.arc(120, Math.floor(h*0.55), 28, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle='#5cc8ff'; ctx.beginPath(); ctx.arc(w-120, Math.floor(h*0.55), 28, 0, Math.PI*2); ctx.fill();
-    this.m.drawText('Battle Log:', 24, h-110, '#9aa3b2', 14);
-    const startY=h-90; this.log.slice(-4).forEach((line,i)=>this.m.drawText(line,24,startY+i*18,'#e6e8ed',14));
+
+  onExit() {
+    this._unmountUI();
+    this.player = null;
+    this.enemy = null;
+    this.actionBar = [];
+    this.turnLock = false;
   }
-  drawBar(ctx,x,y,w,h,label,v,vmax,right=false){
-    ctx.fillStyle='#0a0d12'; ctx.fillRect(x,y,w,h);
-    const pct=Math.max(0,Math.min(1,v/vmax)); ctx.fillStyle='#5cc8ff'; ctx.fillRect(x,y,Math.floor(w*pct),h);
-    const tx=right?x+w-2:x+2; this.m.drawText(`${label} ${v}/${vmax}`, tx, y-6, '#e6e8ed', 12);
+
+  // --- UI -------------------------------------------------------------------
+
+  _mountUI() {
+    // Attach to overlay if available; otherwise body
+    const host = this.sm.overlay || document.body;
+
+    // Root
+    const root = document.createElement('div');
+    root.id = 'battle-ui';
+    root.style.position = 'absolute';
+    root.style.left = '16px';
+    root.style.right = '16px';
+    root.style.bottom = '16px';
+    root.style.padding = '12px';
+    root.style.background = 'rgba(12, 16, 24, 0.7)';
+    root.style.border = '1px solid rgba(255,255,255,0.08)';
+    root.style.borderRadius = '12px';
+    root.style.backdropFilter = 'blur(4px)';
+    root.style.pointerEvents = 'auto';
+    root.style.color = '#dbe3f0';
+    root.style.font = '14px/1.4 system-ui, sans-serif';
+
+    // Header (player/enemy HUD)
+    const hud = document.createElement('div');
+    hud.id = 'battle-hud';
+    hud.style.display = 'flex';
+    hud.style.justifyContent = 'space-between';
+    hud.style.gap = '12px';
+    hud.style.marginBottom = '8px';
+
+    // Action bar
+    const bar = document.createElement('div');
+    bar.id = 'battle-actions';
+    bar.style.display = 'flex';
+    bar.style.flexWrap = 'wrap';
+    bar.style.gap = '8px';
+    bar.style.marginTop = '8px';
+    bar.style.marginBottom = '8px';
+
+    // Log
+    const log = document.createElement('div');
+    log.id = 'battle-log';
+    log.style.maxHeight = '160px';
+    log.style.overflow = 'auto';
+    log.style.padding = '8px';
+    log.style.background = 'rgba(0,0,0,0.25)';
+    log.style.borderRadius = '8px';
+    log.style.border = '1px solid rgba(255,255,255,0.06)';
+
+    root.append(hud, bar, log);
+    host.appendChild(root);
+
+    this.uiRoot = root;
+    this.actionBarEl = bar;
+    this.logEl = log;
   }
-  teardown(){
-    if(this.buttons?.parentElement) this.buttons.parentElement.removeChild(this.buttons);
-    this.m.overlayEl.classList.remove('interactive');
+
+  _unmountUI() {
+    if (this.uiRoot && this.uiRoot.parentNode) {
+      this.uiRoot.parentNode.removeChild(this.uiRoot);
+    }
+    this.uiRoot = this.actionBarEl = this.logEl = null;
+  }
+
+  _renderHeader() {
+    const hud = this.uiRoot.querySelector('#battle-hud');
+    hud.innerHTML = '';
+
+    const p = this.player;
+    const e = this.enemy;
+
+    const mkCard = (title, hp, extra = '') => {
+      const card = document.createElement('div');
+      card.style.flex = '1';
+      card.style.padding = '8px';
+      card.style.background = 'rgba(255,255,255,0.04)';
+      card.style.borderRadius = '8px';
+      card.style.border = '1px solid rgba(255,255,255,0.06)';
+      card.innerHTML = `
+        <div style="font-weight:600;margin-bottom:6px">${title}</div>
+        <div>HP: <strong>${hp}</strong>${extra ? ` • ${extra}` : ''}</div>
+      `;
+      return card;
+    };
+
+    const playerHP = `${p.hp}/${p.hpMax ?? p.hp}`;
+    const enemyHP  = `${e.hp}`;
+
+    hud.append(
+      mkCard(`🧙 ${p.name}`, playerHP, `Class: ${p.classId ?? 'warrior'}`),
+      mkCard(`👾 ${e.name}`, enemyHP, `Lv.${e.level}`)
+    );
+  }
+
+  _renderActionBar() {
+    const bar = this.actionBarEl;
+    bar.innerHTML = '';
+
+    for (const sk of this.actionBar) {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = sk.name;
+      btn.style.minWidth = '96px';
+      btn.onclick = () => this.useSkill(sk);
+      bar.appendChild(btn);
+    }
+  }
+
+  _log(text) {
+    if (!this.logEl) return console.log('[battle]', text);
+    const p = document.createElement('div');
+    p.textContent = text;
+    this.logEl.appendChild(p);
+    this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+
+  // --- Combat core ----------------------------------------------------------
+
+  async useSkill(skill) {
+    if (this.turnLock) return;
+    this.turnLock = true;
+
+    const p = this.player;
+    const e = this.enemy;
+
+    // Pay resource costs if defined
+    if (skill.cost) {
+      if (!p.resources) p.resources = {};
+      for (const [res, amt] of Object.entries(skill.cost)) {
+        const have = p.resources[res] ?? 0;
+        if (have < amt) {
+          this._log(`Not enough ${res} to use ${skill.name}.`);
+          this.turnLock = false;
+          return;
+        }
+      }
+      for (const [res, amt] of Object.entries(skill.cost)) {
+        p.resources[res] = (p.resources[res] ?? 0) - amt;
+      }
+    }
+
+    // Execute simple effect interpreter
+    this._log(`${p.name} uses ${skill.name}!`);
+    for (const fx of (skill.effects || [])) {
+      switch (fx.kind) {
+        case 'damage': {
+          const ctx = this._ctxFor(p);
+          const amount = Math.max(0, Math.round(this._evalFormula(fx.formula || 'atk*1', ctx)));
+          this._applyDamage(e, amount, skill);
+          break;
+        }
+        case 'heal': {
+          const amount = Math.max(1, fx.amount ?? 5);
+          this._healTarget(p, amount, skill);
+          break;
+        }
+        case 'buff': {
+          this._applyBuff(p, fx.stat, fx.amount ?? 1, fx.duration ?? 1);
+          break;
+        }
+        case 'shield': {
+          this._applyShield(p, fx.amount ?? 5, fx.duration ?? 1);
+          break;
+        }
+        case 'taunt': {
+          // Stub: could set e.aiTarget = 'player' for N turns
+          this._log(`${p.name} taunts ${e.name}!`);
+          break;
+        }
+        case 'slow': {
+          // Stub: reduce enemy spd for duration
+          this._log(`${e.name} is slowed.`);
+          break;
+        }
+        case 'dot': {
+          // Stub: damage-over-time
+          this._log(`${e.name} is afflicted.`);
+          break;
+        }
+        case 'multi': {
+          // Already encoded in damage skill above; could loop for extra hits
+          break;
+        }
+        default:
+          this._log(`(effect ${fx.kind} not implemented yet)`);
+      }
+    }
+
+    // Check end of battle
+    if (e.hp <= 0) {
+      this._renderHeader();
+      this._log(`🏆 ${e.name} is defeated!`);
+      this.turnLock = false;
+      return;
+    }
+
+    // Enemy acts after a small delay (prototype feel)
+    this._renderHeader();
+    await this._sleep(400);
+    await this._enemyTurn();
+    this._renderHeader();
+    this.turnLock = false;
+  }
+
+  async _enemyTurn() {
+    const e = this.enemy;
+    const p = this.player;
+    if (p.hp <= 0) return;
+
+    const dmg = Math.max(1, Math.round((e.atk ?? 5) * 0.9) - (p.def ?? 0));
+    this._log(`${e.name} strikes back!`);
+    this._applyDamage(p, dmg, { id: 'enemy_attack', name: 'Enemy Attack' });
+
+    if (p.hp <= 0) {
+      this._renderHeader();
+      this._log(`💀 ${p.name} has fallen...`);
+    }
+  }
+
+  // --- Math & helpers -------------------------------------------------------
+
+  _ctxFor(unit) {
+    return {
+      atk: unit.atk ?? 6,
+      mag: unit.mag ?? 6,
+      def: unit.def ?? 0,
+      spd: unit.spd ?? 0
+    };
+  }
+
+  _evalFormula(expr, ctx) {
+    // Minimal safe-ish evaluator for formulas like 'atk*1.2' or 'mag*1.35'
+    // DO NOT feed user input here; this is designer-controlled data.
+    try {
+      /* eslint no-new-func: "off" */
+      return Function(...Object.keys(ctx), `return ${expr};`)(...Object.values(ctx));
+    } catch {
+      return 0;
+    }
+  }
+
+  _applyDamage(target, amount, sourceSkill) {
+    target.hp = Math.max(0, (target.hp ?? 0) - amount);
+    const who = (target === this.player) ? this.player.name : this.enemy.name;
+    this._log(`${who} takes ${amount} damage.`);
+  }
+
+  _healTarget(target, amount, sourceSkill) {
+    const max = (target.hpMax ?? target.hp ?? 0);
+    target.hp = Math.min(max, (target.hp ?? 0) + amount);
+    const who = (target === this.player) ? this.player.name : this.enemy.name;
+    this._log(`${who} recovers ${amount} HP.`);
+  }
+
+  _applyBuff(target, stat, amount, duration) {
+    // Prototype: immediate additive buff that fades at end of battle (no timers)
+    target[stat] = (target[stat] ?? 0) + amount;
+    const who = (target === this.player) ? this.player.name : this.enemy.name;
+    this._log(`${who}'s ${stat} rises by ${amount} for ${duration} turn(s).`);
+  }
+
+  _applyShield(target, amount, duration) {
+    // Prototype: track as temp HP on target._shield (consumed before hp)
+    target._shield = (target._shield ?? 0) + amount;
+    const who = (target === this.player) ? this.player.name : this.enemy.name;
+    this._log(`${who} gains a shield (${amount}) for ${duration} turn(s).`);
+  }
+
+  _sleep(ms) {
+    return new Promise(res => setTimeout(res, ms));
   }
 }

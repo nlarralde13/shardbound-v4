@@ -1,0 +1,53 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "mage",
+    "name": "Mage",
+    "archetype": ["caster", "dps"],
+    "resources": ["mana"],
+    "baseStats": { "hp": 26, "mp": 18, "atk": 3, "mag": 8, "def": 3, "spd": 5 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 3, "mp": 4, "mag": 2, "atk": 0, "def": 1, "spd": 1 } }
+  },
+  "skills": {
+    "fireball": {
+      "name": "Fireball",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "mana": 5 },
+      "cooldown": 0,
+      "scaling": { "mag": 1.1 },
+      "effects": [{ "kind": "damage", "formula": "mag*1.1" }],
+      "tags": ["elemental", "fire"]
+    },
+    "arcane_barrier": {
+      "name": "Arcane Barrier",
+      "unlock": { "level": 2 },
+      "type": "shield",
+      "target": "ally",
+      "cost": { "mana": 6 },
+      "cooldown": 3,
+      "effects": [{ "kind": "shield", "amount": 8, "duration": 2 }]
+    },
+    "firebolt": {
+      "name": "Firebolt",
+      "unlock": { "level": 5 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "mana": 7 },
+      "cooldown": 1,
+      "scaling": { "mag": 1.35 },
+      "effects": [{ "kind": "damage", "formula": "mag*1.35" }],
+      "tags": ["elemental", "fire"]
+    }
+  },
+
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

@@ -3,6 +3,8 @@
 // Action: lookAround() -> one of {nothing, danger, resource} with weights.
 // Includes detailed console.debug logs to trace selection and handlers.
 
+import { loadEnemies, pickRandomEnemy } from "/static/js/data/enemyCatalog.js";
+
 export function createExploration(sb) {
   const state = {
     cooldownMs: 2500,
@@ -58,11 +60,14 @@ export function createExploration(sb) {
     sb.ui?.say?.(`You look around… ${line}`);
   }
 
-  function doDanger() {
-    const enc = rollEncounter();
-    console.debug("[exploration] outcome: danger ->", enc);
-    sb.ui?.say?.(`Danger finds you! ${enc.name} (Lv.${enc.level}) emerges from the gloom.`);
-    sb.toBattle?.(enc);
+
+  //DANGER
+  async function doDanger() {
+    const catalog = await loadEnemies();
+    const enemy = pickRandomEnemy(catalog);   // <-- random goblin mob
+    console.log(enemy)
+    sb.ui?.say?.(`Danger finds you! A wild ${enemy.name} appears!`);
+    sb.toBattle?.(enemy);                      // hand it off to your battle scene
   }
 
   function doResource() {

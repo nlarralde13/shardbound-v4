@@ -1,0 +1,50 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "warrior",
+    "name": "Warrior",
+    "archetype": ["melee", "tank"],
+    "resources": ["stamina"],
+    "baseStats": { "hp": 36, "mp": 0, "atk": 7, "mag": 1, "def": 6, "spd": 4 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 5, "atk": 2, "def": 2, "spd": 1 } }
+  },
+  "skills": {
+    "strike": {
+      "name": "Strike",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "stamina": 2 },
+      "cooldown": 0,
+      "scaling": { "atk": 1.0 },
+      "effects": [{ "kind": "damage", "formula": "atk*1.0" }]
+    },
+    "guard": {
+      "name": "Guard",
+      "unlock": { "level": 2 },
+      "type": "buff",
+      "target": "self",
+      "cost": { "stamina": 1 },
+      "cooldown": 2,
+      "effects": [{ "kind": "buff", "stat": "def", "amount": 3, "duration": 2 }]
+    },
+    "taunt": {
+      "name": "Taunt",
+      "unlock": { "level": 3 },
+      "type": "control",
+      "target": "enemy",
+      "cost": { "stamina": 1 },
+      "cooldown": 3,
+      "effects": [{ "kind": "taunt", "duration": 1 }]
+    }    
+  },
+  
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

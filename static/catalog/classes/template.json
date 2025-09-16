@@ -1,0 +1,60 @@
+{
+  "meta": { "version": "0.1", "author": "you", "notes": "Per-class catalog file" },
+
+  "class": {
+    "id": "CLASS_ID",
+    "name": "Readable Name",
+    "archetype": ["melee", "ranged", "caster", "tank", "support", "healer"],
+    "resources": ["stamina", "mana", "energy", "focus", "faith", "chi"],
+
+    "baseStats": {
+      "hp": 30,
+      "mp": 10,
+      "atk": 6,
+      "mag": 6,
+      "def": 4,
+      "spd": 4
+    },
+
+    "progression": {
+      "maxLevel": 20,
+      "perLevel": { "hp": 4, "mp": 2, "atk": 1, "mag": 1, "def": 1, "spd": 1 }
+    }
+  },
+
+  "skills": {
+    "SIMPLE_ID": {
+      "name": "Display Name",
+      "unlock": { "level": 1 }, 
+      "type": "attack | buff | heal | control | shield",
+      "target": "enemy | self | ally | party",
+      "cost": { "mana": 3 },
+      "cooldown": 0,
+      "scaling": { "atk": 1.0, "mag": 0.0 },
+      "effects": [
+        { "kind": "damage", "formula": "atk*1.0" }
+      ],
+      "tags": ["keyword", "elemental"],
+      "aiHints": { "priority": 5, "when": "enemy_hp_high" },
+      "vfx": { "anim": "slash", "color": "red" }
+    }
+
+    
+  },
+
+  "specs": {
+   
+    "spec_id": {
+      "name": "Readable Spec",
+      "skills": {
+        "SPEC_SKILL_ID": {
+          "name": "Spec Skill",
+          "unlock": { "level": 7 },
+          "type": "buff",
+          "target": "self",
+          "effects": [{ "kind": "buff", "stat": "def", "amount": 3, "duration": 2 }]
+        }
+      }
+    }
+  }
+}

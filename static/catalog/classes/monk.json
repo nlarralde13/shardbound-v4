@@ -1,0 +1,50 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "monk",
+    "name": "Monk",
+    "archetype": ["melee", "hybrid"],
+    "resources": ["chi"],
+    "baseStats": { "hp": 32, "mp": 0, "atk": 6, "mag": 4, "def": 4, "spd": 6 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "mag": 1, "spd": 1 } }
+  },
+  "skills": {
+    "palm_strike": {
+      "name": "Palm Strike",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "chi": 2 },
+      "cooldown": 0,
+      "scaling": { "atk": 1.0 },
+      "effects": [{ "kind": "damage", "formula": "atk*1.0" }]
+    },
+    "iron_skin": {
+      "name": "Iron Skin",
+      "unlock": { "level": 2 },
+      "type": "buff",
+      "target": "self",
+      "cost": { "chi": 1 },
+      "cooldown": 2,
+      "effects": [{ "kind": "buff", "stat": "def", "amount": 3, "duration": 2 }]
+    },
+    "soothe": {
+      "name": "Soothe",
+      "unlock": { "level": 3 },
+      "type": "heal",
+      "target": "ally",
+      "cost": { "chi": 2 },
+      "cooldown": 1,
+      "effects": [{ "kind": "heal", "amount": 6 }]
+    }    
+  },
+  
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

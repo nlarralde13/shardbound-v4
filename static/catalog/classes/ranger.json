@@ -1,0 +1,50 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "ranger",
+    "name": "Ranger",
+    "archetype": ["ranged", "dps"],
+    "resources": ["focus"],
+    "baseStats": { "hp": 32, "mp": 0, "atk": 6, "mag": 2, "def": 3, "spd": 6 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "spd": 1, "def": 1 } }
+  },
+  "skills": {
+    "aimed_shot": {
+      "name": "Aimed Shot",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "focus": 2 },
+      "cooldown": 0,
+      "scaling": { "atk": 1.1 },
+      "effects": [{ "kind": "damage", "formula": "atk*1.1" }]
+    },
+    "sapling_snare": {
+      "name": "Sapling Snare",
+      "unlock": { "level": 2 },
+      "type": "control",
+      "target": "enemy",
+      "cost": { "focus": 1 },
+      "cooldown": 2,
+      "effects": [{ "kind": "root", "duration": 1 }]
+    },
+    "rapid_fire": {
+      "name": "Rapid Fire",
+      "unlock": { "level": 4 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "focus": 3 },
+      "cooldown": 1,
+      "effects": [{ "kind": "damage", "formula": "atk*0.7" }, { "kind": "multi", "hits": 2 }]
+    }
+  },
+
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

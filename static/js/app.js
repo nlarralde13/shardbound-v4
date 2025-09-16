@@ -1,3 +1,5 @@
+// app.js (add near top, before Store init)
+
 import { Store } from '/static/js/state/store.js';
 import { SceneManager } from '/static/js/sceneManager.js';
 import { MapScene } from '/static/js/scenes/MapScene.js';
@@ -6,9 +8,22 @@ import { TownScene } from '/static/js/scenes/TownScene.js';
 import { initTabs } from '/static/js/ui/tabs.js';
 
 
+const qp = (k) => new URLSearchParams(location.search).get(k);
+const classId = (qp('class') || 'warrior').toLowerCase();  // default warrior
+const playerLevel = Math.max(1, parseInt(qp('lvl') || '1', 10));
+
+
+
+
 const store = new Store({
-  player: { name:'Adventurer', hp:30, hpMax:30, mp:10, mpMax:10, gold:25,
-            inventory:[{ id:'potion', name:'Health Potion', qty:2 }], equipment:{ head:null, chest:null, hands:null, legs:null, weapon:null } },
+  player: {
+    name:'Adventurer',
+    hp:30,hpMax:30, mp:10, mpMax:10, gold:25,
+    classId,
+    level:playerLevel,
+    inventory:[{ id:'potion', name:'Health Potion', qty:2 }],
+    equipment:{ head:null, chest:null, hands:null, legs:null, weapon:null }
+  },
   scene: { name:'map', data:{} },
 });
 

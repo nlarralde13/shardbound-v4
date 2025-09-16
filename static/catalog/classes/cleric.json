@@ -1,0 +1,50 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "cleric",
+    "name": "Cleric",
+    "archetype": ["support", "healer"],
+    "resources": ["faith"],
+    "baseStats": { "hp": 32, "mp": 0, "atk": 3, "mag": 6, "def": 4, "spd": 4 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "mag": 2, "def": 1, "spd": 1 } }
+  },
+  "skills": {
+    "smite": {
+      "name": "Smite",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "faith": 2 },
+      "cooldown": 0,
+      "scaling": { "mag": 1.0 },
+      "effects": [{ "kind": "damage", "formula": "mag*1.0" }]
+    },
+    "heal": {
+      "name": "Heal",
+      "unlock": { "level": 1 },
+      "type": "heal",
+      "target": "ally",
+      "cost": { "faith": 3 },
+      "cooldown": 0,
+      "effects": [{ "kind": "heal", "amount": 8 }]
+    },
+    "aegis": {
+      "name": "Aegis",
+      "unlock": { "level": 3 },
+      "type": "shield",
+      "target": "ally",
+      "cost": { "faith": 3 },
+      "cooldown": 2,
+      "effects": [{ "kind": "shield", "amount": 8, "duration": 2 }]
+    }
+  },
+  
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

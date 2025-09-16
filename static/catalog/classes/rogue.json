@@ -1,0 +1,49 @@
+{
+  "meta": { "version": "0.1" },
+  "class": {
+    "id": "rogue",
+    "name": "Rogue",
+    "archetype": ["melee", "dps"],
+    "resources": ["energy"],
+    "baseStats": { "hp": 30, "mp": 0, "atk": 7, "mag": 1, "def": 3, "spd": 7 },
+    "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "spd": 2, "def": 1 } }
+  },
+  "skills": {
+    "stab": {
+      "name": "Stab",
+      "unlock": { "level": 1 },
+      "type": "attack",
+      "target": "enemy",
+      "cost": { "energy": 2 },
+      "cooldown": 0,
+      "scaling": { "atk": 1.0 },
+      "effects": [{ "kind": "damage", "formula": "atk*1.0" }]
+    },
+    "evade": {
+      "name": "Evade",
+      "unlock": { "level": 2 },
+      "type": "buff",
+      "target": "self",
+      "cost": { "energy": 1 },
+      "cooldown": 2,
+      "effects": [{ "kind": "buff", "stat": "spd", "amount": 2, "duration": 2 }]
+    },
+    "mark": {
+      "name": "Mark",
+      "unlock": { "level": 3 },
+      "type": "debuff",
+      "target": "enemy",
+      "cost": { "energy": 1 },
+      "cooldown": 2,
+      "effects": [{ "kind": "vuln", "amount": 2, "duration": 2 }]
+    }
+  },
+  "starter": {
+      "gold": 25,
+      "inventory": [
+        { "id": "potion", "name": "Health Potion", "qty": 2 },
+        { "id": "wood", "qty": 5 },
+        { "id": "ore",  "qty": 3 }
+      ]
+    }
+}

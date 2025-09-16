@@ -8,8 +8,9 @@ export function initTabs(store, sceneManager){
   const tabbar = document.getElementById('tabbar');
   const content = document.getElementById('tab-content');
   const tabs = {
-    inventory: new InventoryTab(store, sceneManager),
+    
     character: new CharacterTab(store, sceneManager),
+    inventory: new InventoryTab(store, sceneManager),
     map:       new MapTab(store, sceneManager),
     quests:    new QuestsTab(store, sceneManager),
     settings:  new SettingsTab(store, sceneManager),
@@ -27,5 +28,5 @@ export function initTabs(store, sceneManager){
     const btn=e.target.closest('button[data-tab]'); if(!btn) return;
     renderTab(btn.dataset.tab);
   });
-  renderTab('inventory');
+  renderTab('map');
 }

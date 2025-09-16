@@ -1,0 +1,415 @@
+{
+  "meta": {
+    "version": "0.1",
+    "faction": "goblin_tribes"
+  },
+  "enemies": {
+    "goblin_thug": {
+      "name": "Goblin Thug",
+      "classArchetype": "warrior",
+      "tags": [
+        "goblin",
+        "melee"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 24,
+        "atk": 6,
+        "mag": 1,
+        "def": 4,
+        "spd": 4,
+        "armor": 2
+      },
+      "aiHints": {
+        "style": "frontline",
+        "openers": [
+          "club_slam"
+        ],
+        "priority": [
+          "enrage",
+          "club_slam"
+        ]
+      },
+      "skills": {
+        "club_slam": {
+          "name": "Club Slam",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 0.9,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 1,
+              "max": 5,
+              "scaling": {
+                "atk": 1
+              }
+            }
+          ]
+        },
+        "enrage": {
+          "name": "Enrage",
+          "type": "buff",
+          "target": "self",
+          "cooldown": 4,
+          "effects": [
+            {
+              "kind": "buff_pct",
+              "stat": "damage",
+              "amountPct": 20,
+              "stacks": 5,
+              "consumeOnAttack": true
+            }
+          ]
+        }
+      }
+    },
+    "goblin_cutpurse": {
+      "name": "Goblin Cutpurse",
+      "classArchetype": "rogue",
+      "tags": [
+        "goblin",
+        "melee"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 20,
+        "atk": 6,
+        "mag": 1,
+        "def": 2,
+        "spd": 6,
+        "armor": 1
+      },
+      "aiHints": {
+        "style": "skirmisher",
+        "openers": [
+          "dagger_jab"
+        ],
+        "priority": [
+          "evade",
+          "mark",
+          "dagger_jab"
+        ]
+      },
+      "skills": {
+        "dagger_jab": {
+          "name": "Dagger Jab",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 0.95,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 1,
+              "max": 4,
+              "scaling": {
+                "atk": 1
+              }
+            }
+          ]
+        },
+        "evade": {
+          "name": "Evade",
+          "type": "buff",
+          "target": "self",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "buff",
+              "stat": "spd",
+              "amount": 2,
+              "duration": 2
+            },
+            {
+              "kind": "evasion",
+              "amountPct": 20,
+              "duration": 1
+            }
+          ]
+        },
+        "mark": {
+          "name": "Mark",
+          "type": "debuff",
+          "target": "enemy",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "vuln",
+              "amount": 2,
+              "duration": 2
+            }
+          ]
+        }
+      }
+    },
+    "goblin_hunter": {
+      "name": "Goblin Hunter",
+      "classArchetype": "ranger",
+      "tags": [
+        "goblin",
+        "ranged"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 22,
+        "atk": 6,
+        "mag": 2,
+        "def": 2,
+        "spd": 5,
+        "armor": 0
+      },
+      "aiHints": {
+        "style": "ranged_dps",
+        "openers": [
+          "aimed_shot"
+        ],
+        "priority": [
+          "snare",
+          "aimed_shot"
+        ]
+      },
+      "skills": {
+        "aimed_shot": {
+          "name": "Aimed Shot",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 0.9,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 2,
+              "max": 5,
+              "scaling": {
+                "atk": 1
+              }
+            }
+          ]
+        },
+        "snare": {
+          "name": "Snare",
+          "type": "control",
+          "target": "enemy",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "root",
+              "duration": 1
+            }
+          ]
+        }
+      }
+    },
+    "goblin_spellslinger": {
+      "name": "Goblin Spellslinger",
+      "classArchetype": "mage",
+      "tags": [
+        "goblin",
+        "caster"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 18,
+        "atk": 2,
+        "mag": 7,
+        "def": 2,
+        "spd": 5,
+        "armor": 0
+      },
+      "aiHints": {
+        "style": "caster",
+        "openers": [
+          "arcane_bolt"
+        ],
+        "priority": [
+          "arcane_shield",
+          "arcane_bolt"
+        ]
+      },
+      "skills": {
+        "arcane_bolt": {
+          "name": "Arcane Bolt",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 1,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 2,
+              "max": 4,
+              "scaling": {
+                "mag": 1
+              }
+            }
+          ]
+        },
+        "arcane_shield": {
+          "name": "Arcane Shield",
+          "type": "shield",
+          "target": "self",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "shield",
+              "amount": 10,
+              "duration": 2
+            }
+          ]
+        }
+      }
+    },
+    "goblin_acolyte": {
+      "name": "Goblin Acolyte",
+      "classArchetype": "cleric",
+      "tags": [
+        "goblin",
+        "support"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 22,
+        "atk": 3,
+        "mag": 6,
+        "def": 3,
+        "spd": 4,
+        "armor": 0
+      },
+      "aiHints": {
+        "style": "healer",
+        "openers": [
+          "smite"
+        ],
+        "priority": [
+          "minor_heal",
+          "aegis",
+          "smite"
+        ]
+      },
+      "skills": {
+        "smite": {
+          "name": "Smite",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 0.95,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 2,
+              "max": 4,
+              "scaling": {
+                "mag": 1
+              }
+            }
+          ]
+        },
+        "minor_heal": {
+          "name": "Minor Heal",
+          "type": "heal",
+          "target": "ally",
+          "cooldown": 1,
+          "effects": [
+            {
+              "kind": "heal",
+              "amount": 6
+            }
+          ]
+        },
+        "aegis": {
+          "name": "Aegis",
+          "type": "shield",
+          "target": "ally",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "shield",
+              "amount": 6,
+              "duration": 2
+            }
+          ]
+        }
+      }
+    },
+    "goblin_brawler": {
+      "name": "Goblin Brawler",
+      "classArchetype": "monk",
+      "tags": [
+        "goblin",
+        "melee"
+      ],
+      "levelRange": [
+        1,
+        6
+      ],
+      "baseStats": {
+        "hp": 26,
+        "atk": 6,
+        "mag": 3,
+        "def": 4,
+        "spd": 6,
+        "armor": 1
+      },
+      "aiHints": {
+        "style": "mobile_melee",
+        "openers": [
+          "palm_strike"
+        ],
+        "priority": [
+          "iron_skin",
+          "palm_strike"
+        ]
+      },
+      "skills": {
+        "palm_strike": {
+          "name": "Palm Strike",
+          "type": "attack",
+          "target": "enemy",
+          "hitChance": 0.95,
+          "cooldown": 0,
+          "effects": [
+            {
+              "kind": "damage_roll",
+              "min": 2,
+              "max": 4,
+              "scaling": {
+                "atk": 1
+              }
+            }
+          ]
+        },
+        "iron_skin": {
+          "name": "Iron Skin",
+          "type": "buff",
+          "target": "self",
+          "cooldown": 3,
+          "effects": [
+            {
+              "kind": "buff",
+              "stat": "def",
+              "amount": 3,
+              "duration": 2
+            }
+          ]
+        }
+      }
+    }
+  }
+}

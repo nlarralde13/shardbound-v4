@@ -1,0 +1,11 @@
+{
+  "meta": { "version": "0.1" },
+  "classes": [
+    { "id": "warrior", "name": "Warrior" },
+    { "id": "rogue",   "name": "Rogue" },
+    { "id": "ranger",  "name": "Ranger" },
+    { "id": "mage",    "name": "Mage" },
+    { "id": "cleric",  "name": "Cleric" },
+    { "id": "monk",    "name": "Monk" }
+  ]
+}

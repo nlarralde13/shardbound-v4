@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Battle Box</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin:0; background:#0a0e14; color:#dbe3f0; font:14px/1.4 system-ui,sans-serif; }
+    .wrap { display:grid; grid-template-columns: 240px 1fr 240px; gap:12px; padding:12px; height:100vh; box-sizing:border-box; }
+    .panel { background:#0f1420; border:1px solid #2a3242; border-radius:12px; padding:10px; overflow:auto; }
+    h2 { margin:0 0 8px 0; font-size:14px; letter-spacing:.2px; color:#b9c3d5; }
+    .list { display:flex; flex-direction:column; gap:6px; }
+    .list button { text-align:left; background:#141b2a; color:#dbe3f0; border:1px solid #2a3242; border-radius:8px; padding:8px; cursor:pointer; }
+    .list button.active { outline:2px solid #5aa2ff; }
+    .controls { display:flex; gap:8px; align-items:center; margin-top:8px; }
+    .center { position:relative; }
+    #sceneOverlay { position:absolute; inset:0; pointer-events:none; }
+    .kv { display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.06); }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input[type=number] { width:64px; background:#141b2a; border:1px solid #2a3242; color:#dbe3f0; border-radius:6px; padding:4px; }
+    .footer { color:#8b95a7; font-size:12px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h2>Player Class</h2>
+      <div class="list" id="classList"></div>
+      <div class="controls">
+        <label>Level <input type="number" id="levelInput" min="1" value="1"></label>
+      </div>
+      <div class="controls">
+        <button id="fightBtn">Fight ▶</button>
+      </div>
+      <div class="footer">Uses class catalogs from <code>/static/catalog/classes</code>.</div>
+    </div>
+
+    <div class="panel center">
+      <h2>Battle Viewer</h2>
+      <div id="sceneMount" style="position:relative; height:80vh; background:#0b111b; border:1px solid #2a3242; border-radius:8px;"></div>
+      <div id="sceneOverlay"></div>
+      <div class="row" style="margin-top:8px">
+        <div class="kv"><span>K_def</span><strong id="kdefVal">12</strong></div>
+        <input type="range" id="kdefSlider" min="6" max="24" step="1" value="12" />
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Enemy</h2>
+      <div class="list" id="enemyList"></div>
+      <div class="footer">Loads from <code>/static/catalog/enemies.json</code>.</div>
+    </div>
+  </div>
+
+  <script type="module" src="/static/js/sandbox/battleSandbox.js"></script>
+</body>
+</html>

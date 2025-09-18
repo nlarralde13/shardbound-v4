@@ -6,6 +6,7 @@
 // Requires: BattleScene.js, classLoader.js
 
 import { loadClassCatalog } from '/static/js/data/classLoader.js';
+import { adaptClassCatalog, adaptEnemy } from '/static/js/data/adapters.js';
 import { BattleScene } from '/static/js/scenes/BattleScene.js';
 
 const ui = {
@@ -32,7 +33,7 @@ async function loadClassIndex() {
   const res = await fetch('/static/catalog/classes/index.json');
   if (!res.ok) throw new Error('Missing /static/catalog/classes/index.json');
   const json = await res.json();
-  classes = json.classes || [];
+  classes = adaptClassCatalog(json.classes || []);
 }
 
 async function loadEnemies() {
@@ -41,22 +42,9 @@ async function loadEnemies() {
   const json = await res.json();
 
   const out = {};
-  for (const [id, e] of Object.entries(json.enemies || {})) {
-    const bs = e.baseStats || {};
-    const def = Number(bs.def ?? 0) + Number(bs.armor ?? 0);
-    const lr = Array.isArray(e.levelRange) ? e.levelRange : [1, 1];
-    out[id] = {
-      id,
-      name: e.name || id,
-      level: Number(lr[0] ?? 1),
-      hp: Number(bs.hp ?? 20),
-      hpMax: Number(bs.hp ?? 20),  // fixed max for bars
-      atk: Number(bs.atk ?? 5),
-      mag: Number(bs.mag ?? 0),
-      def,
-      spd: Number(bs.spd ?? 3),
-      _raw: e                         // keep full record for AI/skills
-    };
+  for (const [id, enemyDef] of Object.entries(json.enemies || {})) {
+    const adapted = adaptEnemy({ ...enemyDef, id });
+    if (adapted) out[adapted.id] = adapted;
   }
   enemies = out;
 }
@@ -117,6 +105,7 @@ async function startFight() {
     inventory: Array.isArray(starter.inventory) ? starter.inventory.slice() : [],
     resources: {}
   };
+  player.classDef = catalog.class || null;
 
   const enemy = JSON.parse(JSON.stringify(enemies[selectedEnemyId]));
 

@@ -5,6 +5,14 @@
     "name": "Monk",
     "archetype": ["melee", "hybrid"],
     "resources": ["chi"],
+    "resourceDefinitions": {
+      "chi": {
+        "label": "Chi",
+        "max": 6,
+        "start": 6,
+        "regenPerTurn": 2
+      }
+    },
     "baseStats": { "hp": 32, "mp": 0, "atk": 6, "mag": 4, "def": 4, "spd": 6 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "mag": 1, "spd": 1 } }
   },

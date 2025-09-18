@@ -5,6 +5,14 @@
     "name": "Ranger",
     "archetype": ["ranged", "dps"],
     "resources": ["focus"],
+    "resourceDefinitions": {
+      "focus": {
+        "label": "Focus",
+        "max": 5,
+        "start": 5,
+        "regenPerTurn": 2
+      }
+    },
     "baseStats": { "hp": 32, "mp": 0, "atk": 6, "mag": 2, "def": 3, "spd": 6 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "spd": 1, "def": 1 } }
   },

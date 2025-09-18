@@ -5,6 +5,14 @@
     "name": "Cleric",
     "archetype": ["support", "healer"],
     "resources": ["faith"],
+    "resourceDefinitions": {
+      "faith": {
+        "label": "Faith",
+        "max": 6,
+        "start": 6,
+        "regenPerTurn": 2
+      }
+    },
     "baseStats": { "hp": 32, "mp": 0, "atk": 3, "mag": 6, "def": 4, "spd": 4 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "mag": 2, "def": 1, "spd": 1 } }
   },

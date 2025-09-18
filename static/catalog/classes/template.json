@@ -6,6 +6,14 @@
     "name": "Readable Name",
     "archetype": ["melee", "ranged", "caster", "tank", "support", "healer"],
     "resources": ["stamina", "mana", "energy", "focus", "faith", "chi"],
+    "resourceDefinitions": {
+      "stamina": { "label": "Stamina", "max": 6, "start": 6, "regenPerTurn": 2 },
+      "mana": { "label": "Mana", "maxFromStat": "mpMax", "start": "full", "regenPerTurn": 3 },
+      "energy": { "label": "Energy", "max": 6, "start": 6, "regenPerTurn": 3 },
+      "focus": { "label": "Focus", "max": 5, "start": 5, "regenPerTurn": 2 },
+      "faith": { "label": "Faith", "max": 6, "start": 6, "regenPerTurn": 2 },
+      "chi": { "label": "Chi", "max": 6, "start": 6, "regenPerTurn": 2 }
+    },
 
     "baseStats": {
       "hp": 30,

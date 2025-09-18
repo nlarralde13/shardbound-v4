@@ -5,6 +5,14 @@
     "name": "Warrior",
     "archetype": ["melee", "tank"],
     "resources": ["stamina"],
+    "resourceDefinitions": {
+      "stamina": {
+        "label": "Stamina",
+        "max": 6,
+        "start": 6,
+        "regenPerTurn": 2
+      }
+    },
     "baseStats": { "hp": 36, "mp": 0, "atk": 7, "mag": 1, "def": 6, "spd": 4 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 5, "atk": 2, "def": 2, "spd": 1 } }
   },

@@ -5,6 +5,14 @@
     "name": "Rogue",
     "archetype": ["melee", "dps"],
     "resources": ["energy"],
+    "resourceDefinitions": {
+      "energy": {
+        "label": "Energy",
+        "max": 6,
+        "start": 6,
+        "regenPerTurn": 3
+      }
+    },
     "baseStats": { "hp": 30, "mp": 0, "atk": 7, "mag": 1, "def": 3, "spd": 7 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 4, "atk": 2, "spd": 2, "def": 1 } }
   },

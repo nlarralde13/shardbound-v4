@@ -1,5 +1,11 @@
-// battleSandbox.js — class/enemy pickers + Fight
-import { loadClassCatalog } from '/static/js/data/classLoader.js'; // fetches /static/catalog/classes/<id>.json :contentReference[oaicite:0]{index=0}
+// /static/js/sandbox/battleSandbox.js
+// - Lists classes from a small manifest: /static/catalog/classes/index.json
+// - Loads enemies from /static/catalog/enemies.json (your schema) and ADAPTS them
+// - Starts BattleScene with chosen class/enemy + K_DEF slider
+//
+// Requires: BattleScene.js, classLoader.js
+
+import { loadClassCatalog } from '/static/js/data/classLoader.js';
 import { BattleScene } from '/static/js/scenes/BattleScene.js';
 
 const ui = {
@@ -34,8 +40,6 @@ async function loadEnemies() {
   if (!res.ok) throw new Error('Missing /static/catalog/enemies.json');
   const json = await res.json();
 
-  // Adapt your enemy schema => flat encounter payload BattleScene uses today
-  // (Your file has enemies.{id}.baseStats + levelRange, aiHints, skills.) :contentReference[oaicite:1]{index=1}
   const out = {};
   for (const [id, e] of Object.entries(json.enemies || {})) {
     const bs = e.baseStats || {};
@@ -46,11 +50,12 @@ async function loadEnemies() {
       name: e.name || id,
       level: Number(lr[0] ?? 1),
       hp: Number(bs.hp ?? 20),
+      hpMax: Number(bs.hp ?? 20),  // fixed max for bars
       atk: Number(bs.atk ?? 5),
       mag: Number(bs.mag ?? 0),
       def,
       spd: Number(bs.spd ?? 3),
-      _raw: e
+      _raw: e                         // keep full record for AI/skills
     };
   }
   enemies = out;
@@ -65,9 +70,8 @@ function renderClassList() {
     btn.onclick = () => { selectedClass = c.id; selectBtn(ui.classList, c.id); };
     ui.classList.appendChild(btn);
   });
-  // default select first or warrior
-  const def = classes.find(c => c.id === 'warrior')?.id || (classes[0] && classes[0].id);
-  selectedClass = def || 'warrior';
+  const def = classes.find(c => c.id === 'warrior')?.id || (classes[0] && classes[0].id) || 'warrior';
+  selectedClass = def;
   selectBtn(ui.classList, selectedClass);
 }
 
@@ -81,35 +85,24 @@ function renderEnemyList() {
     btn.onclick = () => { selectedEnemyId = e.id; selectBtn(ui.enemyList, e.id); };
     ui.enemyList.appendChild(btn);
   });
-  // default to first enemy
-  if (list.length) {
-    selectedEnemyId = list[0].id;
-    selectBtn(ui.enemyList, selectedEnemyId);
-  }
+  if (list.length) { selectedEnemyId = list[0].id; selectBtn(ui.enemyList, selectedEnemyId); }
 }
 
-// tiny fake scene manager to host the battle scene
+// Tiny host for the scene
 class SandboxSceneManager {
-  constructor(mountEl, overlayEl) {
-    this.mount = mountEl;
-    this.overlay = overlayEl;
-    this._payload = null;
-  }
-  getPayload() { return this._payload; }
+  constructor(mountEl, overlayEl) { this.mount = mountEl; this.overlay = overlayEl; this._payload = null; }
+  getPayload(){ return this._payload; }
   switchTo() {}
 }
 
 let K_DEF = Number(ui.kdefSlider.value);
-ui.kdefSlider.addEventListener('input', () => {
-  K_DEF = Number(ui.kdefSlider.value);
-  ui.kdefVal.textContent = String(K_DEF);
-});
+ui.kdefSlider.addEventListener('input', () => { K_DEF = Number(ui.kdefSlider.value); ui.kdefVal.textContent = String(K_DEF); });
 
 async function startFight() {
   if (!selectedEnemyId) return alert('Pick an enemy');
 
   const level = Math.max(1, parseInt(ui.levelInput.value || '1', 10));
-  const catalog = await loadClassCatalog(selectedClass); // → full class JSON (baseStats, skills, starter) :contentReference[oaicite:2]{index=2}
+  const catalog = await loadClassCatalog(selectedClass);
   const base = catalog.class?.baseStats || {};
   const starter = catalog.starter || {};
 
@@ -127,16 +120,14 @@ async function startFight() {
 
   const enemy = JSON.parse(JSON.stringify(enemies[selectedEnemyId]));
 
-  // store + scene manager facades
-  const store = { _state: { player, scene: { name: 'battle', data: {} } }, get() { return this._state; } };
-  ui.overlay.innerHTML = '';
-  ui.mount.innerHTML = '';
+  const store = { _state: { player, scene: { name: 'battle', data: {} } }, get(){ return this._state; } };
+  ui.overlay.innerHTML = ''; ui.mount.innerHTML = '';
   const sm = new SandboxSceneManager(ui.mount, ui.overlay);
-  sm._payload = { encounter: enemy, K_DEF }; // if you later teach BattleScene to read K_DEF
+  sm._payload = { encounter: enemy, K_DEF };
 
   const scene = new BattleScene(sm, store);
   await scene.onEnter();
-  window.__scene = scene; // for console poking
+  window.__scene = scene;
 }
 
 async function init() {
@@ -152,5 +143,4 @@ async function init() {
   }
   ui.fightBtn.addEventListener('click', startFight);
 }
-
 init();

@@ -1,96 +1,93 @@
 // /static/js/scenes/BattleScene.js
 // -----------------------------------------------------------------------------
-// V4 Battle Scene (self-contained)
-// - Reads player class/level from Store (Store is created in app.js).
-// - Loads /static/catalog/classes/<classId>.json (skills gated by level).
-// - Renders an action bar from the unlocked skills + basic Attack/Defend.
-// - Shows HP/MP bars for both units, updates live on damage/heal.
-// - Provides a small, well-commented combat math section you can tune.
+// Battle Scene (vNext)
+// - Loads class kit (skills by level) from /static/catalog/classes/<classId>.json
+// - Accepts enemy payload (flattened) from sandbox/main, with raw AI data attached
+// - Renders portraits + HP/MP bars
+// - Enemy AI uses aiHints.openers → priority → fallback attack, with cooldowns & hitChance
+// - Damage math exposes a full debug breakdown (raw → mitigation → variance → crit → final)
+//   Toggle DEBUG below to silence logs in the UI once tuning is done.
 //
-// Integration points:
-//  • Class loader helpers come from /static/js/data/classLoader.js  (skills, kit)
-//    (This matches the API you already use elsewhere.)  :contentReference[oaicite:2]{index=2}
-//  • Enemy objects are provided by your sandbox adapter from enemies.json,
-//    flattened into { hp, atk, mag, def, spd, level, name }.             :contentReference[oaicite:3]{index=3}
-//
-// Optional payload knobs (from the caller/sandbox):
-//  • K_DEF: mitigation soft-cap constant (defaults to 12 if not provided)
-//  • encounter: the enemy stat block to fight
+// External data loaders:
+//   classLoader.js → loadClassCatalog, skillsAvailableAtLevel  :contentReference[oaicite:2]{index=2}
+// Enemy data format provided by your /static/catalog/enemies.json (raw)         :contentReference[oaicite:3]{index=3}
 //
 // -----------------------------------------------------------------------------
 
-import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js'; // :contentReference[oaicite:4]{index=4}
+import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
+import { initFromClass, syncCanonical, canSpend, spend, regenTurn } from '../systems/resourceManager.js';
 
 export class BattleScene {
-  /**
-   * @param {SceneManager} sm - provides .overlay and .getPayload()
-   * @param {Store} store    - provides .get() -> { player, scene }
-   */
   constructor(sm, store) {
     this.sm = sm;
     this.store = store;
 
-    // --- UI element refs -----------------------------------------------------
-    this.uiRoot = null;       // <div id="battle-ui"> ...
-    this.hudEl = null;        // header cards region (player/enemy)
-    this.actionBarEl = null;  // buttons for skills
-    this.logEl = null;        // scrolling text log
+    // UI refs
+    this.uiRoot = null;
+    this.hudEl = null;
+    this.actionBarEl = null;
+    this.logEl = null;
 
-    // --- Runtime state -------------------------------------------------------
-    this.player = null;       // live reference to store.get().player
-    this.enemy = null;        // current enemy object
-    this.actionBar = [];      // list of skill objects for player
-    this.turnLock = false;    // prevents double-activations during an action
+    // State
+    this.player = null;
+    this.enemy = null;
+    this.actionBar = [];
+    this.turnLock = false;
+    this._turn = 0;     // enemy turn counter
+    this._currentTarget = null;
 
-    // --- Tunables (EDIT HERE or pass via payload) ----------------------------
-    this.K_DEF = 12;          // mitigation soft-cap (higher => more mitigation)
-    this.VARIANCE_MIN = 0.90; // ±10% variance by default
-    this.VARIANCE_MAX = 1.10;
-    this.CRIT_CHANCE = 0.10;  // 10% crit
-    this.CRIT_MULT = 1.50;    // 1.5x damage on crit
+    // Tuning knobs (edit here or pass K_DEF in payload)
+    this.K_DEF = 12;          // mitigation soft-cap constant
+    this.VARIANCE_MIN = 0.90; // ±10% damage variance (lower bound)
+    this.VARIANCE_MAX = 1.10; // (upper bound)
+    this.CRIT_CHANCE = 0.10;  // 10% crit chance
+    this.CRIT_MULT = 1.50;    // 1.5x crit multiplier
+
+    // Debug logging to battle log (set to false when you’re done tuning)
+    this.DEBUG = true;
   }
 
   // ===========================================================================
   // Scene Lifecycle
   // ===========================================================================
-
   async onEnter() {
-    // 1) Bind player and read payload (enemy + optional K_DEF)
     const state = this.store.get();
     this.player = state.player;
 
+    initFromClass(this.player.classDef, this.player);
+    syncCanonical(this.player);
+
     const payload = this.sm.getPayload?.() || {};
     if (typeof payload.K_DEF === 'number') this.K_DEF = payload.K_DEF;
-    // Fallback enemy if none provided (handy when called directly)
     this.enemy = payload.encounter || {
-      id: 'slime',
-      name: 'Gloomslick Slime',
-      level: 1,
+      id: 'slime', name: 'Gloomslick Slime', level: 1,
       hp: 24, atk: 5, mag: 0, def: 2, spd: 3
     };
 
-    
-
+    // Ensure fixed max bars once per encounter
     if (typeof this.enemy.hpMax !== 'number') this.enemy.hpMax = this.enemy.hp ?? 0;
     if (typeof this.enemy.mpMax !== 'number') this.enemy.mpMax = this.enemy.mp ?? 0;
-
-    // (optional) also ensure the player has maxes (if not already set)
     if (typeof this.player.hpMax !== 'number') this.player.hpMax = this.player.hp ?? 0;
     if (typeof this.player.mpMax !== 'number') this.player.mpMax = this.player.mp ?? 0;
 
-    // 2) Mount the UI chrome and greet the fight
+    // Portraits
+    const classId = (this.player.classId || 'warrior').toLowerCase();
+    this.player.portrait = `/static/assets/art/classArt/${classId}.png`;
+    if (!this.enemy.portrait && this.enemy._raw?.art?.portrait) {
+      this.enemy.portrait = this.enemy._raw.art.portrait;
+    }
+
+    // UI
     this._mountUI();
     this._renderHeader();
     this._log(`⚔️ A wild ${this.enemy.name} (Lv.${this.enemy.level}) appears!`);
+    this._dlog(`[init] K_DEF = ${this.K_DEF}`);
 
-    // 3) Build player's action kit from class+level
-    const classId = (this.player.classId || 'warrior').toLowerCase();
-    const level   = Math.max(1, this.player.level || 1);
-
+    // Build player action kit
+    const level = Math.max(1, this.player.level || 1);
     try {
       const catalog = await loadClassCatalog(classId);
-      const kit = skillsAvailableAtLevel(catalog, level); // [{ id, name, type, target, effects[], ...}]
-      // Always-available basic actions (good safety net)
+      const kit = skillsAvailableAtLevel(catalog, level);
       const basics = [
         { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
         { id:'defend',       name:'Defend', type:'buff',   target:'self',  effects:[{ kind:'buff', stat:'def', amount:2, duration:1 }] }
@@ -98,8 +95,8 @@ export class BattleScene {
       this.actionBar = [...basics, ...kit];
       this._renderActionBar();
       this._log(`Class loaded: ${(catalog.class?.name || classId)} (Lv.${level}). Actions ready.`);
-    } catch (err) {
-      console.error('[BattleScene] class load failed:', err);
+    } catch (e) {
+      console.error('[BattleScene] class load failed:', e);
       this._log('No class catalog found. Using basic actions.');
       this.actionBar = [
         { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
@@ -115,12 +112,12 @@ export class BattleScene {
     this.enemy = null;
     this.actionBar = [];
     this.turnLock = false;
+    this._turn = 0;
   }
 
   // ===========================================================================
-  // UI (HUD + Bars + Action Bar + Log)
+  // UI
   // ===========================================================================
-
   _mountUI() {
     const host = this.sm.overlay || document.body;
 
@@ -131,7 +128,7 @@ export class BattleScene {
     root.style.right = '16px';
     root.style.bottom = '16px';
     root.style.padding = '12px';
-    root.style.background = 'rgba(12, 16, 24, 0.72)';
+    root.style.background = 'rgba(12,16,24,0.72)';
     root.style.border = '1px solid rgba(255,255,255,0.08)';
     root.style.borderRadius = '12px';
     root.style.backdropFilter = 'blur(4px)';
@@ -156,7 +153,7 @@ export class BattleScene {
 
     const log = document.createElement('div');
     log.id = 'battle-log';
-    log.style.maxHeight = '160px';
+    log.style.maxHeight = '200px';
     log.style.overflow = 'auto';
     log.style.padding = '8px';
     log.style.background = 'rgba(0,0,0,0.25)';
@@ -177,9 +174,28 @@ export class BattleScene {
     this.uiRoot = this.hudEl = this.actionBarEl = this.logEl = null;
   }
 
-  // --- Progress Bars ---------------------------------------------------------
+  _mkPortrait(src) {
+    const box = document.createElement('div');
+    box.style.width = '40px';
+    box.style.height = '40px';
+    box.style.flex = '0 0 40px';
+    box.style.borderRadius = '8px';
+    box.style.overflow = 'hidden';
+    box.style.border = '1px solid rgba(255,255,255,0.10)';
+    box.style.background = 'rgba(255,255,255,0.06)';
+    if (src) {
+      const img = document.createElement('img');
+      img.src = src; img.alt = '';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+      box.appendChild(img);
+    }
+    return box;
+  }
+
   _mkBar(label, curr, max, opts = {}) {
-    const pct = Math.max(0, Math.min(1, max > 0 ? curr / max : 0));
+    const pct = Math.max(0, Math.min(1, max > 0 ? (curr / max) : 0));
     const wrap = document.createElement('div');
     wrap.style.margin = '4px 0';
 
@@ -202,16 +218,17 @@ export class BattleScene {
     fill.style.height = '100%';
     fill.style.width = `${pct * 100}%`;
     fill.style.transition = 'width 200ms ease';
-    fill.style.background = opts.color || 'linear-gradient(90deg, #ff4d6d, #ff936a)'; // HP default
+    fill.style.background = opts.color || 'linear-gradient(90deg, #ff4d6d, #ff936a)';
     bar.appendChild(fill);
 
-    // Optional shield overlay (temp HP beyond HP bar)
     if (opts.shield && opts.shield > 0) {
-      const total = (max || 0) + opts.shield; // show as extension to the right
+      const total = (max || 0) + opts.shield;
       const shieldPct = Math.max(0, Math.min(1, total > 0 ? (Math.max(curr,0) + opts.shield) / total : 0));
       const shieldBar = document.createElement('div');
       shieldBar.style.position = 'absolute';
-      shieldBar.style.right = '0'; shieldBar.style.top = '0'; shieldBar.style.bottom = '0';
+      shieldBar.style.right = '0';
+      shieldBar.style.top = '0';
+      shieldBar.style.bottom = '0';
       shieldBar.style.width = `${Math.max(0, (shieldPct - pct) * 100)}%`;
       shieldBar.style.background = 'linear-gradient(90deg, rgba(135,206,250,0.6), rgba(176,224,230,0.6))';
       bar.appendChild(shieldBar);
@@ -229,21 +246,22 @@ export class BattleScene {
     card.style.borderRadius = '8px';
     card.style.border = '1px solid rgba(255,255,255,0.06)';
 
-    const header = document.createElement('div');
-    header.style.fontWeight = '600';
-    header.style.marginBottom = '6px';
-    header.textContent = `${title}${extra ? ` — ${extra}` : ''}`;
-    card.appendChild(header);
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.gap = '8px';
+    headerRow.style.marginBottom = '6px';
+    const head = document.createElement('div');
+    head.style.fontWeight = '600';
+    head.textContent = `${title}${extra ? ` — ${extra}` : ''}`;
+    headerRow.append(this._mkPortrait(unit.portrait), head);
+    card.appendChild(headerRow);
 
-    // HP (with optional shield)
     card.appendChild(this._mkBar('HP', unit.hp ?? 0, unit.hpMax ?? (unit.hp ?? 0), { shield: unit._shield || 0 }));
-
-    // MP/Resource if present
     const mpMax = unit.mpMax ?? 0;
     if (mpMax > 0) {
       card.appendChild(this._mkBar('MP', unit.mp ?? 0, mpMax, { color: 'linear-gradient(90deg, #4d7cff, #80b3ff)' }));
     }
-
     return card;
   }
 
@@ -251,17 +269,15 @@ export class BattleScene {
     const hud = this.hudEl;
     hud.innerHTML = '';
 
-    const p = this.player;
-    const e = this.enemy;
-
-    const playerTitle = `🧙 ${p.name || (p.classId ? p.classId[0].toUpperCase()+p.classId.slice(1) : 'Adventurer')}`;
-    const enemyTitle  = `👾 ${e.name}`;
+    const p = this.player, e = this.enemy;
+    const pTitle = `🧙 ${p.name || (p.classId ? p.classId[0].toUpperCase()+p.classId.slice(1) : 'Adventurer')}`;
+    const eTitle = `👾 ${e.name}`;
     const pExtra = `Class: ${p.classId ?? 'warrior'}`;
     const eExtra = `Lv.${e.level}`;
 
     hud.append(
-      this._mkUnitCard(playerTitle, p, pExtra),
-      this._mkUnitCard(enemyTitle,  e, eExtra)
+      this._mkUnitCard(pTitle, p, pExtra),
+      this._mkUnitCard(eTitle,  e, eExtra)
     );
   }
 
@@ -277,59 +293,48 @@ export class BattleScene {
     }
   }
 
-  _log(text) {
-    if (!this.logEl) return console.log('[battle]', text);
-    const p = document.createElement('div');
-    p.textContent = text;
-    this.logEl.appendChild(p);
+  _log(t) {
+    if (!this.logEl) return console.log('[battle]', t);
+    const d = document.createElement('div');
+    d.textContent = t;
+    this.logEl.appendChild(d);
     this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+  _dlog(line){ if (this.DEBUG){ this._log(line); console.debug(line); } }
+  _dlogBlock(title, obj){
+    if (!this.DEBUG) return;
+    const pretty = JSON.stringify(obj, null, 2);
+    this._log(`[math] ${title}`);
+    for (const ln of pretty.split('\n')) this._log('  ' + ln);
+    console.debug(`[math] ${title}`, obj);
   }
 
   // ===========================================================================
-  // Combat Core
+  // Player turn
   // ===========================================================================
-
-  /**
-   * Player uses a skill (button click).
-   *  - Pays costs (if any)
-   *  - Applies effects via a small interpreter
-   *  - Triggers enemy turn (simple AI) if enemy still alive
-   */
   async useSkill(skill) {
     if (this.turnLock) return;
     this.turnLock = true;
 
-    const p = this.player;
-    const e = this.enemy;
+    const p = this.player, e = this.enemy;
 
-    // 1) Resource costs (if your class JSON includes 'cost': {...})
+    // Pay any class resource costs
     if (skill.cost) {
       if (!p.resources) p.resources = {};
       for (const [res, amt] of Object.entries(skill.cost)) {
         const have = p.resources[res] ?? 0;
-        if (have < amt) {
-          this._log(`Not enough ${res} to use ${skill.name}.`);
-          this.turnLock = false;
-          return;
-        }
+        if (have < amt) { this._log(`Not enough ${res} to use ${skill.name}.`); this.turnLock = false; return; }
       }
       for (const [res, amt] of Object.entries(skill.cost)) {
         p.resources[res] = (p.resources[res] ?? 0) - amt;
       }
     }
 
-    // 2) Do the thing
     this._log(`${p.name} uses ${skill.name}!`);
     await this._applySkillEffects(p, e, skill);
 
-    if (e.hp <= 0) {
-      this._renderHeader();
-      this._log(`🏆 ${e.name} is defeated!`);
-      this.turnLock = false;
-      return;
-    }
+    if (e.hp <= 0) { this._renderHeader(); this._log(`🏆 ${e.name} is defeated!`); this.turnLock = false; return; }
 
-    // 3) Enemy reacts after a short delay
     this._renderHeader();
     await this._sleep(400);
     await this._enemyTurn();
@@ -337,226 +342,235 @@ export class BattleScene {
     this.turnLock = false;
   }
 
-  /**
-   * Enemy AI (MVP):
-   *  - If enemy has a "primary" attack defined (via your adapter), use it.
-   *  - Else do a default physical swing based on e.atk.
-   * (You can evolve this to read e._raw.aiHints.priority and e._raw.skills.)
-   */
+  // ===========================================================================
+  // Enemy AI (openers → priority → any attack → fallback)
+  // ===========================================================================
   async _enemyTurn() {
-    const e = this.enemy;
-    const p = this.player;
+    const e = this.enemy, p = this.player;
     if (p.hp <= 0) return;
 
-    // Use the first available attack from raw skills if present (very simple)
-    let skill = null;
-    const rawSkills = e._raw?.skills || null;
-    if (rawSkills) {
-      // pick first 'attack' skill defined
-      for (const [id, def] of Object.entries(rawSkills)) {
-        if (def?.type === 'attack') {
-          skill = { id, name: def.name || id, type:'attack', target:'enemy',
-                    effects: this._adaptEnemyEffects(def.effects || []) };
-          break;
-        }
-      }
-    }
+    if (!this._turn) this._turn = 1;
+    if (!e._cds) e._cds = {};
+    // tick cooldowns
+    for (const k of Object.keys(e._cds)) e._cds[k] = Math.max(0, (e._cds[k] || 0) - 1);
 
-    // Fallback: a basic enemy strike (atk-based)
+    const raw = e._raw;
+    const skills = raw?.skills || {};
+    const hints = raw?.aiHints || {};
+
+    const isUsable = (id) => {
+      const def = skills[id]; if (!def) return false;
+      const cdLeft = e._cds[id] || 0; return cdLeft <= 0;
+    };
+
+    let skill = null;
+
+    // 1) openers on first turn
+    if (this._turn === 1 && Array.isArray(hints.openers)) {
+      const first = hints.openers.find(isUsable);
+      if (first) skill = this._mkEnemySkill(first, skills[first]);
+    }
+    // 2) priority thereafter
+    if (!skill && Array.isArray(hints.priority)) {
+      const prio = hints.priority.find(isUsable);
+      if (prio) skill = this._mkEnemySkill(prio, skills[prio]);
+    }
+    // 3) any usable attack
     if (!skill) {
-      skill = { id:'enemy_attack', name:'Enemy Attack', type:'attack', target:'enemy',
+      const anyAtk = Object.entries(skills).find(([id, def]) => def?.type === 'attack' && isUsable(id));
+      if (anyAtk) skill = this._mkEnemySkill(anyAtk[0], anyAtk[1]);
+    }
+    // 4) fallback swing
+    if (!skill) {
+      skill = { id:'enemy_attack', name:'Enemy Attack', type:'attack', target:'enemy', hitChance:1,
                 effects:[{ kind:'damage', formula:'atk*0.9' }] };
     }
+
+    // Hit roll
+    const evasionPct = p._evasionPct || 0;
+    const baseHit = (typeof skill.hitChance === 'number' ? skill.hitChance : 1);
+    const finalHit = Math.max(0, Math.min(1, baseHit * (1 - evasionPct/100)));
+    this._dlogBlock(`${e.name} hit roll`, { baseHit, evasionPct, finalHit });
+    if (Math.random() > finalHit) { this._log(`${e.name} uses ${skill.name}! (miss)`); this._turn++; return; }
 
     this._log(`${e.name} uses ${skill.name}!`);
     await this._applySkillEffects(e, p, skill);
 
-    if (p.hp <= 0) {
-      this._renderHeader();
-      this._log(`💀 ${p.name} has fallen...`);
-    }
+    // start cooldown if defined
+    const rawDef = skills[skill.id];
+    if (rawDef && typeof rawDef.cooldown === 'number') e._cds[skill.id] = rawDef.cooldown;
+
+    if (p.hp <= 0) { this._renderHeader(); this._log(`💀 ${p.name} has fallen...`); }
+    this._turn++;
   }
 
-  // --- Effects Interpreter ---------------------------------------------------
-  /**
-   * Applies a single skill's effects list from "source" to "target".
-   * Supports the following kinds out of the box:
-   *  • damage (formula-based, e.g., "atk*1.1", "mag*1.35")
-   *  • heal   (flat amount)
-   *  • buff   (additive stat change)
-   *  • shield (temp HP pool)
-   *  • taunt, slow, root, stun, dot  (stubs/logs; wire as needed)
-   * You can add new kinds by extending the switch below.
-   */
+  _mkEnemySkill(id, def) {
+    return {
+      id,
+      name: def?.name || id,
+      type: def?.type || 'attack',
+      target: def?.target || 'enemy',
+      hitChance: (typeof def?.hitChance === 'number' ? def.hitChance : 1),
+      effects: this._adaptEnemyEffects(def?.effects || [])
+    };
+  }
+
+  _adaptEnemyEffects(effects) {
+    // Enemy effect kinds already line up with our interpreter (damage_roll, buff, shield, heal, root, evasion, vuln).
+    return effects.map(e => ({ ...e }));
+  }
+
+  // ===========================================================================
+  // Effects Interpreter
+  // ===========================================================================
   async _applySkillEffects(source, target, skill) {
     const effects = skill.effects || [];
     for (const fx of effects) {
       switch (fx.kind) {
-        // --- Core damage (formula string) -----------------------------------
         case 'damage': {
           const raw = this._evalFormula(fx.formula || 'atk*1', this._ctxFor(source));
-          const dealt = this._applyMitigationAndRng(raw, target.def ?? 0);
-          this._applyDamage(target, dealt, skill);
+          this._currentTarget = target;
+          const math = this._calcDamage(raw, target);
+          this._currentTarget = null;
+          this._dlogBlock(`${source.name} → ${target.name} | ${skill.name}`, {
+            raw: math.inputs.raw, def: math.inputs.targetDef, vuln: math.inputs.vuln, K_DEF: math.inputs.K_DEF,
+            mult: math.mitigation.mult, afterMit: math.mitigation.afterMit,
+            varianceFactor: math.variance.varFactor, afterVariance: math.variance.afterVar,
+            crit: math.crit.didCrit, final: math.result.final
+          });
+          this._applyDamage(target, math.result.final, skill);
           break;
         }
-        // --- Heal ------------------------------------------------------------
+        case 'damage_roll': {
+          const base = this._randInt(fx.min ?? 1, fx.max ?? 3);
+          const scale = (fx.scaling?.atk ? (source.atk ?? 0) * (fx.scaling.atk || 0) : 0)
+                      + (fx.scaling?.mag ? (source.mag ?? 0) * (fx.scaling.mag || 0) : 0);
+          const raw = base + scale;
+          this._currentTarget = target;
+          const math = this._calcDamage(raw, target);
+          this._currentTarget = null;
+          this._dlogBlock(`${source.name} → ${target.name} | ${skill.name}`, {
+            baseRoll: base, scale, raw,
+            def: math.inputs.targetDef, vuln: math.inputs.vuln, K_DEF: math.inputs.K_DEF,
+            mult: math.mitigation.mult, afterMit: math.mitigation.afterMit,
+            varianceFactor: math.variance.varFactor, afterVariance: math.variance.afterVar,
+            crit: math.crit.didCrit, final: math.result.final
+          });
+          this._applyDamage(target, math.result.final, skill);
+          break;
+        }
         case 'heal': {
           const amount = Math.max(1, Math.round(fx.amount ?? 5));
           this._healTarget(source === target ? source : target, amount, skill);
           break;
         }
-        // --- Buff / Debuff ---------------------------------------------------
         case 'buff': {
           this._applyBuff(source === target ? source : (fx.target === 'self' ? source : target),
                           fx.stat, fx.amount ?? 1, fx.duration ?? 1);
           break;
         }
-        // --- Shield ----------------------------------------------------------
         case 'shield': {
           this._applyShield(source === target ? source : (fx.target === 'self' ? source : target),
                             fx.amount ?? 5, fx.duration ?? 1);
           break;
         }
-        // --- Misc stubs: extend these when you add systems ------------------
-        case 'taunt': {
-          this._log(`${source.name} taunts ${target.name}!`);
+        case 'evasion': { // { amountPct, duration }
+          const add = Number(fx.amountPct || 0);
+          source._evasionPct = Math.max(0, (source._evasionPct || 0) + add);
+          this._log(`${source.name} becomes evasive (+${add}% evasion).`);
           break;
         }
-        case 'slow': {
-          this._log(`${target.name} is slowed.`);
-          target.spd = Math.max(0, (target.spd ?? 0) - (fx.amount ?? 1));
+        case 'vuln': { // { amount, duration } → reduce DEF for mitigation
+          const amt = Number(fx.amount || 0);
+          target._vuln = Math.max(0, (target._vuln || 0) + amt);
+          this._log(`${target.name} is exposed (-${amt} DEF).`);
           break;
         }
-        case 'root': {
-          this._log(`${target.name} is rooted.`);
-          break;
-        }
-        case 'stun': {
-          this._log(`${target.name} is stunned.`);
-          break;
-        }
-        case 'dot': {
-          this._log(`${target.name} suffers a lingering effect.`);
-          break;
-        }
-        // --- Enemy-only convenience kinds (from your enemies.json) ----------
-        // "damage_roll": { min, max, scaling:{ atk?:1, mag?:1 } }
-        case 'damage_roll': {
-          const base = this._randInt(fx.min ?? 1, fx.max ?? 3);
-          const scale = (fx.scaling?.atk ? (source.atk ?? 0) * (fx.scaling.atk || 0) : 0)
-                      + (fx.scaling?.mag ? (source.mag ?? 0) * (fx.scaling.mag || 0) : 0);
-          const raw = base + scale; // simple sum; you can move this into formula if you prefer
-          const dealt = this._applyMitigationAndRng(raw, target.def ?? 0);
-          this._applyDamage(target, dealt, skill);
-          break;
-        }
-        // "buff_pct": { stat:'damage', amountPct:20, stacks:5, consumeOnAttack:true }  (stub)
-        case 'buff_pct': {
-          this._log(`${source.name} powers up (${fx.amountPct ?? 0}% ${fx.stat || 'stat'}).`);
-          break;
-        }
+        case 'root': { this._log(`${target.name} is rooted in place.`); break; }
+        case 'slow': { target.spd = Math.max(0, (target.spd ?? 0) - (fx.amount ?? 1)); this._log(`${target.name} is slowed.`); break; }
+        case 'taunt': { this._log(`${source.name} taunts ${target.name}!`); break; }
+        case 'dot': { this._log(`${target.name} suffers a lingering effect.`); break; }
         default: {
           this._log(`(effect ${fx.kind} not implemented)`);
         }
       }
-
-      // Update bars immediately after each effect tick
       this._renderHeader();
       await this._sleep(10);
     }
   }
 
-  // Convert enemy effect blocks into scene-native kinds when needed
-  _adaptEnemyEffects(effects) {
-    // Most of your enemy effects already match our kinds (damage_roll, buff, shield, heal)
-    // Return shallow copy to be safe
-    return effects.map(e => ({ ...e }));
-  }
-
   // ===========================================================================
-  // Math (Mitigation, Crit, Variance) — EDIT HERE to change "the feel"
+  // Math
   // ===========================================================================
-
-  /**
-   * Evaluate a small formula string using a limited context.
-   * Designer-controlled (not user input), so Function(...) is acceptable here.
-   * Example: 'atk*1.1' or 'mag*1.35'
-   */
   _evalFormula(expr, ctx) {
-    try {
-      /* eslint no-new-func: "off" */
-      return Function(...Object.keys(ctx), `return ${expr};`)(...Object.values(ctx));
-    } catch {
-      return 0;
-    }
+    try { return Function(...Object.keys(ctx), `return ${expr};`)(...Object.values(ctx)); }
+    catch { return 0; }
   }
 
-  _ctxFor(unit) {
+  _ctxFor(u) { return { atk: u.atk ?? 6, mag: u.mag ?? 6, def: u.def ?? 0, spd: u.spd ?? 0, level: u.level ?? 1 }; }
+
+  _calcDamage(raw, target) {
+    const baseDef = Number(target.def || 0);
+    const vuln    = Number(target._vuln || 0);
+    const defEff  = Math.max(0, baseDef - vuln);
+
+    const k = this.K_DEF;
+    const mult = k / (defEff + k);
+    const afterMit = Math.max(0, raw * mult);
+
+    const varFactor = this._rand(this.VARIANCE_MIN, this.VARIANCE_MAX);
+    let afterVar = afterMit * varFactor;
+
+    let didCrit = false;
+    if (Math.random() < this.CRIT_CHANCE) { afterVar *= this.CRIT_MULT; didCrit = true; }
+
+    const final = Math.max(1, Math.round(afterVar));
+
     return {
-      atk: unit.atk ?? 6,
-      mag: unit.mag ?? 6,
-      def: unit.def ?? 0,
-      spd: unit.spd ?? 0
+      inputs: { raw, targetDef: baseDef, vuln, K_DEF: k },
+      mitigation: { mult, afterMit: Number(afterMit.toFixed(3)) },
+      variance: { varFactor: Number(varFactor.toFixed(3)), afterVar: Number(afterVar.toFixed(3)) },
+      crit: { didCrit, critMult: this.CRIT_MULT },
+      result: { final }
     };
   }
 
-  /**
-   * Applies mitigation + variance + crit to a raw hit before rounding.
-   * Mitigation model (soft cap):
-   *    multiplier = K_DEF / (DEF + K_DEF)
-   *    where K_DEF is a tunable constant (higher -> more reduction).
-   * Then we apply ±10% variance and a 10% crit for 1.5x (defaults).
-   */
-  _applyMitigationAndRng(raw, targetDef) {
-    // 1) Mitigation
-    const mult = this.K_DEF / (Math.max(0, targetDef) + this.K_DEF);
-    let dmg = Math.max(0, raw * mult);
-
-    // 2) Variance
-    const v = this._rand(this.VARIANCE_MIN, this.VARIANCE_MAX);
-    dmg *= v;
-
-    // 3) Crit
-    if (Math.random() < this.CRIT_CHANCE) {
-      dmg *= this.CRIT_MULT;
-      this._log(' (critical!)');
-    }
-
-    return Math.max(1, Math.round(dmg));
-  }
-
   // ===========================================================================
-  // Stat Application Helpers
+  // Stat application
   // ===========================================================================
-
-  _applyDamage(target, amount /*, sourceSkill */) {
-    // Shields absorb first
+  _applyDamage(target, amount) {
     if (target._shield && target._shield > 0) {
       const absorbed = Math.min(target._shield, amount);
       target._shield -= absorbed;
       amount -= absorbed;
-      this._log(`${target.name} absorbs ${absorbed} with a shield.`);
+      if (absorbed > 0) this._log(`${target.name} absorbs ${absorbed} with a shield.`);
     }
     if (amount > 0) {
-      target.hp = Math.max(0, (target.hp ?? 0) - amount);
+      const before = target.hp ?? 0;
+      target.hp = Math.max(0, before - amount);
+      const after = target.hp;
       this._log(`${target.name} takes ${amount} damage.`);
+      this._dlogBlock(`HP change (${target.name})`, { before, amount, after, hpMax: target.hpMax ?? before });
     }
     this._renderHeader();
   }
 
-  _healTarget(target, amount /*, sourceSkill */) {
-    const max = (target.hpMax ?? target.hp ?? 0);
-    target.hp = Math.min(max, (target.hp ?? 0) + amount);
+  _healTarget(target, amount) {
+    const before = target.hp ?? 0;
+    const max = (target.hpMax ?? before);
+    target.hp = Math.min(max, before + amount);
+    const after = target.hp;
     this._log(`${target.name} recovers ${amount} HP.`);
+    this._dlogBlock(`HP change (${target.name})`, { before, amount:-amount, after, hpMax: target.hpMax ?? before });
     this._renderHeader();
   }
 
-  _applyBuff(target, stat, amount, /*duration*/) {
+  _applyBuff(target, stat, amount) {
     target[stat] = (target[stat] ?? 0) + (amount ?? 0);
     this._log(`${target.name}'s ${stat} ${(amount >= 0 ? 'rises' : 'drops')} by ${Math.abs(amount)}.`);
   }
 
-  _applyShield(target, amount, /*duration*/) {
+  _applyShield(target, amount) {
     target._shield = (target._shield ?? 0) + (amount ?? 0);
     this._log(`${target.name} gains a shield (${amount}).`);
   }
@@ -564,7 +578,6 @@ export class BattleScene {
   // ===========================================================================
   // Utilities
   // ===========================================================================
-
   _sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
   _rand(min, max) { return min + Math.random() * (max - min); }
   _randInt(min, max) { return Math.floor(this._rand(min, max + 1)); }

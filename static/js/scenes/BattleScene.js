@@ -16,6 +16,7 @@
 
 import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
 import { initFromClass, syncCanonical, canSpend, spend, regenTurn } from '../systems/resourceManager.js';
+import { buildBattleDOM } from '../views/battleView.js';
 
 export class BattleScene {
   constructor(sm, store) {
@@ -23,18 +24,17 @@ export class BattleScene {
     this.store = store;
 
     // UI refs
-    this.uiRoot = null;
-    this.hudEl = null;
-    this.actionBarEl = null;
-    this.logEl = null;
+    this.rootEl = null;
 
     // State
     this.player = null;
     this.enemy = null;
     this.actionBar = [];
     this.turnLock = false;
+    this.turn = 1;
     this._turn = 0;     // enemy turn counter
     this._currentTarget = null;
+    this.logs = [];
 
     // Tuning knobs (edit here or pass K_DEF in payload)
     this.K_DEF = 12;          // mitigation soft-cap constant
@@ -53,57 +53,64 @@ export class BattleScene {
   async onEnter() {
     const state = this.store.get();
     this.player = state.player;
-
-    initFromClass(this.player.classDef, this.player);
-    syncCanonical(this.player);
+    this.turnLock = false;
+    this.turn = 1;
+    this.logs = [];
+    this.actionBar = [];
+    this._turn = 0;
+    this._currentTarget = null;
 
     const payload = this.sm.getPayload?.() || {};
     if (typeof payload.K_DEF === 'number') this.K_DEF = payload.K_DEF;
-    this.enemy = payload.encounter || {
+
+    const encounter = payload.encounter || {
       id: 'slime', name: 'Gloomslick Slime', level: 1,
       hp: 24, atk: 5, mag: 0, def: 2, spd: 3
     };
+    this.enemy = { ...encounter };
 
-    // Ensure fixed max bars once per encounter
     if (typeof this.enemy.hpMax !== 'number') this.enemy.hpMax = this.enemy.hp ?? 0;
     if (typeof this.enemy.mpMax !== 'number') this.enemy.mpMax = this.enemy.mp ?? 0;
     if (typeof this.player.hpMax !== 'number') this.player.hpMax = this.player.hp ?? 0;
     if (typeof this.player.mpMax !== 'number') this.player.mpMax = this.player.mp ?? 0;
 
-    // Portraits
     const classId = (this.player.classId || 'warrior').toLowerCase();
+    let catalog = null;
+    try {
+      catalog = await loadClassCatalog(classId);
+      if (catalog?.class) {
+        this.player.classDef = catalog.class;
+      }
+    } catch (e) {
+      console.error('[BattleScene] class load failed:', e);
+    }
+
+    initFromClass(this.player.classDef, this.player);
+    syncCanonical(this.player);
+
     this.player.portrait = `/static/assets/art/classArt/${classId}.png`;
     if (!this.enemy.portrait && this.enemy._raw?.art?.portrait) {
       this.enemy.portrait = this.enemy._raw.art.portrait;
     }
 
-    // UI
     this._mountUI();
-    this._renderHeader();
+    this.render();
+
     this._log(`⚔️ A wild ${this.enemy.name} (Lv.${this.enemy.level}) appears!`);
     this._dlog(`[init] K_DEF = ${this.K_DEF}`);
 
-    // Build player action kit
     const level = Math.max(1, this.player.level || 1);
-    try {
-      const catalog = await loadClassCatalog(classId);
-      const kit = skillsAvailableAtLevel(catalog, level);
-      const basics = [
-        { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
-        { id:'defend',       name:'Defend', type:'buff',   target:'self',  effects:[{ kind:'buff', stat:'def', amount:2, duration:1 }] }
-      ];
+    const basics = this._buildBasicActions();
+    if (catalog) {
+      const kit = skillsAvailableAtLevel(catalog, level).map((sk) => this._normalizeAbility(sk));
       this.actionBar = [...basics, ...kit];
-      this._renderActionBar();
-      this._log(`Class loaded: ${(catalog.class?.name || classId)} (Lv.${level}). Actions ready.`);
-    } catch (e) {
-      console.error('[BattleScene] class load failed:', e);
+      const className = catalog.class?.name || classId;
+      this._log(`Class loaded: ${className} (Lv.${level}). Actions ready.`);
+    } else {
+      this.actionBar = basics;
       this._log('No class catalog found. Using basic actions.');
-      this.actionBar = [
-        { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
-        { id:'defend',       name:'Defend', type:'buff',   target:'self',  effects:[{ kind:'buff', stat:'def', amount:2, duration:1 }] }
-      ];
-      this._renderActionBar();
     }
+    this.render();
   }
 
   onExit() {
@@ -112,6 +119,8 @@ export class BattleScene {
     this.enemy = null;
     this.actionBar = [];
     this.turnLock = false;
+    this.turn = 1;
+    this.logs = [];
     this._turn = 0;
   }
 
@@ -120,7 +129,6 @@ export class BattleScene {
   // ===========================================================================
   _mountUI() {
     const host = this.sm.overlay || document.body;
-
     const root = document.createElement('div');
     root.id = 'battle-ui';
     root.style.position = 'absolute';
@@ -135,170 +143,133 @@ export class BattleScene {
     root.style.color = '#dbe3f0';
     root.style.font = '14px/1.4 system-ui, sans-serif';
     root.style.pointerEvents = 'auto';
+    root.dataset.scene = 'battle';
 
-    const hud = document.createElement('div');
-    hud.id = 'battle-hud';
-    hud.style.display = 'flex';
-    hud.style.justifyContent = 'space-between';
-    hud.style.gap = '12px';
-    hud.style.marginBottom = '8px';
-
-    const bar = document.createElement('div');
-    bar.id = 'battle-actions';
-    bar.style.display = 'flex';
-    bar.style.flexWrap = 'wrap';
-    bar.style.gap = '8px';
-    bar.style.marginTop = '8px';
-    bar.style.marginBottom = '8px';
-
-    const log = document.createElement('div');
-    log.id = 'battle-log';
-    log.style.maxHeight = '200px';
-    log.style.overflow = 'auto';
-    log.style.padding = '8px';
-    log.style.background = 'rgba(0,0,0,0.25)';
-    log.style.borderRadius = '8px';
-    log.style.border = '1px solid rgba(255,255,255,0.06)';
-
-    root.append(hud, bar, log);
     host.appendChild(root);
-
-    this.uiRoot = root;
-    this.hudEl = hud;
-    this.actionBarEl = bar;
-    this.logEl = log;
+    this.rootEl = root;
   }
 
   _unmountUI() {
-    if (this.uiRoot && this.uiRoot.parentNode) this.uiRoot.parentNode.removeChild(this.uiRoot);
-    this.uiRoot = this.hudEl = this.actionBarEl = this.logEl = null;
-  }
-
-  _mkPortrait(src) {
-    const box = document.createElement('div');
-    box.style.width = '40px';
-    box.style.height = '40px';
-    box.style.flex = '0 0 40px';
-    box.style.borderRadius = '8px';
-    box.style.overflow = 'hidden';
-    box.style.border = '1px solid rgba(255,255,255,0.10)';
-    box.style.background = 'rgba(255,255,255,0.06)';
-    if (src) {
-      const img = document.createElement('img');
-      img.src = src; img.alt = '';
-      img.style.width = '100%';
-      img.style.height = '100%';
-      img.style.objectFit = 'cover';
-      box.appendChild(img);
+    if (this.rootEl && this.rootEl.parentNode) {
+      this.rootEl.parentNode.removeChild(this.rootEl);
     }
-    return box;
+    this.rootEl = null;
   }
 
-  _mkBar(label, curr, max, opts = {}) {
-    const pct = Math.max(0, Math.min(1, max > 0 ? (curr / max) : 0));
-    const wrap = document.createElement('div');
-    wrap.style.margin = '4px 0';
+  render() {
+    if (!this.rootEl) return;
+    syncCanonical(this.player);
+    syncCanonical(this.enemy);
+    const logs = this.logs.slice(-60);
+    const locked = this.turnLock;
+    const abilities = this.actionBar.map((ability) => ({
+      id: ability.id,
+      name: ability.name,
+      disabled: locked || !this.canUseAbility(ability),
+      resource: ability.resource,
+      cost: ability.cost ?? 0,
+      costLabel: this._formatAbilityCost(ability),
+    }));
 
-    const head = document.createElement('div');
-    head.style.display = 'flex';
-    head.style.justifyContent = 'space-between';
-    head.style.fontSize = '12px';
-    head.style.opacity = '0.85';
-    head.innerHTML = `<span>${label}</span><span>${Math.max(0,Math.round(curr))} / ${Math.round(max || 0)}</span>`;
+    buildBattleDOM({
+      root: this.rootEl,
+      state: {
+        player: this.player,
+        enemy: this.enemy,
+        turn: this.turn,
+        logs,
+        abilities,
+        isLocked: locked,
+      },
+      handlers: {
+        onAbility: (abilityId) => this.useAbility(abilityId),
+        onEndTurn: () => this.endTurn(),
+        onSelectTarget: () => {},
+      }
+    });
+  }
 
-    const bar = document.createElement('div');
-    bar.style.position = 'relative';
-    bar.style.height = '10px';
-    bar.style.borderRadius = '6px';
-    bar.style.background = 'rgba(255,255,255,0.07)';
-    bar.style.overflow = 'hidden';
-    bar.style.border = '1px solid rgba(255,255,255,0.08)';
+  _buildBasicActions() {
+    const basics = [
+      { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
+      { id:'defend',       name:'Defend', type:'buff',   target:'self',  effects:[{ kind:'buff', stat:'def', amount:2, duration:1 }] }
+    ];
+    return basics.map((skill) => this._normalizeAbility(skill));
+  }
 
-    const fill = document.createElement('div');
-    fill.style.height = '100%';
-    fill.style.width = `${pct * 100}%`;
-    fill.style.transition = 'width 200ms ease';
-    fill.style.background = opts.color || 'linear-gradient(90deg, #ff4d6d, #ff936a)';
-    bar.appendChild(fill);
+  _normalizeAbility(raw) {
+    const clone = { ...raw };
+    const cost = clone.cost;
+    let resource = clone.resource || null;
+    let amount = 0;
+    let costMap = null;
 
-    if (opts.shield && opts.shield > 0) {
-      const total = (max || 0) + opts.shield;
-      const shieldPct = Math.max(0, Math.min(1, total > 0 ? (Math.max(curr,0) + opts.shield) / total : 0));
-      const shieldBar = document.createElement('div');
-      shieldBar.style.position = 'absolute';
-      shieldBar.style.right = '0';
-      shieldBar.style.top = '0';
-      shieldBar.style.bottom = '0';
-      shieldBar.style.width = `${Math.max(0, (shieldPct - pct) * 100)}%`;
-      shieldBar.style.background = 'linear-gradient(90deg, rgba(135,206,250,0.6), rgba(176,224,230,0.6))';
-      bar.appendChild(shieldBar);
+    if (typeof cost === 'number') {
+      amount = Number(cost) || 0;
+    } else if (cost && typeof cost === 'object') {
+      costMap = {};
+      for (const [key, val] of Object.entries(cost)) {
+        costMap[key] = Number(val) || 0;
+      }
+      const entries = Object.entries(costMap);
+      if (entries.length) {
+        if (!resource) resource = entries[0][0];
+        const found = entries.find(([key]) => key === resource) || entries[0];
+        amount = found[1];
+      }
     }
 
-    wrap.append(head, bar);
-    return wrap;
+    clone.cost = amount;
+    clone.resource = resource || clone.resource || 'mana';
+    if (costMap) clone.costMap = costMap;
+    return clone;
   }
 
-  _mkUnitCard(title, unit, extra = '') {
-    const card = document.createElement('div');
-    card.style.flex = '1';
-    card.style.padding = '8px';
-    card.style.background = 'rgba(255,255,255,0.04)';
-    card.style.borderRadius = '8px';
-    card.style.border = '1px solid rgba(255,255,255,0.06)';
-
-    const headerRow = document.createElement('div');
-    headerRow.style.display = 'flex';
-    headerRow.style.alignItems = 'center';
-    headerRow.style.gap = '8px';
-    headerRow.style.marginBottom = '6px';
-    const head = document.createElement('div');
-    head.style.fontWeight = '600';
-    head.textContent = `${title}${extra ? ` — ${extra}` : ''}`;
-    headerRow.append(this._mkPortrait(unit.portrait), head);
-    card.appendChild(headerRow);
-
-    card.appendChild(this._mkBar('HP', unit.hp ?? 0, unit.hpMax ?? (unit.hp ?? 0), { shield: unit._shield || 0 }));
-    const mpMax = unit.mpMax ?? 0;
-    if (mpMax > 0) {
-      card.appendChild(this._mkBar('MP', unit.mp ?? 0, mpMax, { color: 'linear-gradient(90deg, #4d7cff, #80b3ff)' }));
+  _getAbilityCosts(ability) {
+    if (!ability) return [];
+    if (ability.costMap && typeof ability.costMap === 'object') {
+      return Object.entries(ability.costMap)
+        .filter(([, amt]) => (Number(amt) || 0) > 0)
+        .map(([resource, amt]) => ({ resource, amount: Number(amt) || 0 }));
     }
-    return card;
+    const amt = Number(ability.cost ?? 0);
+    if (amt <= 0) return [];
+    return [{ resource: ability.resource || 'mana', amount: amt }];
   }
 
-  _renderHeader() {
-    const hud = this.hudEl;
-    hud.innerHTML = '';
-
-    const p = this.player, e = this.enemy;
-    const pTitle = `🧙 ${p.name || (p.classId ? p.classId[0].toUpperCase()+p.classId.slice(1) : 'Adventurer')}`;
-    const eTitle = `👾 ${e.name}`;
-    const pExtra = `Class: ${p.classId ?? 'warrior'}`;
-    const eExtra = `Lv.${e.level}`;
-
-    hud.append(
-      this._mkUnitCard(pTitle, p, pExtra),
-      this._mkUnitCard(eTitle,  e, eExtra)
-    );
+  _formatAbilityCost(ability) {
+    const parts = this._getAbilityCosts(ability).map(({ resource, amount }) => {
+      const label = this._resourceLabel(resource);
+      return `${amount} ${label}`;
+    });
+    return parts.join(' / ');
   }
 
-  _renderActionBar() {
-    this.actionBarEl.innerHTML = '';
-    for (const sk of this.actionBar) {
-      const btn = document.createElement('button');
-      btn.className = 'btn';
-      btn.textContent = sk.name;
-      btn.style.minWidth = '96px';
-      btn.onclick = () => this.useSkill(sk);
-      this.actionBarEl.appendChild(btn);
+  _resourceLabel(resource) {
+    const res = this.player?.resources?.[resource];
+    if (res && typeof res === 'object' && res.label) return res.label;
+    return resource;
+  }
+
+  canUseAbility(ability) {
+    const costs = this._getAbilityCosts(ability);
+    if (!costs.length) return true;
+    return costs.every(({ resource, amount }) => canSpend(this.player, resource, amount));
+  }
+
+  _spendAbilityCost(ability) {
+    const costs = this._getAbilityCosts(ability);
+    for (const { resource, amount } of costs) {
+      if (amount > 0) spend(this.player, resource, amount);
     }
   }
 
   _log(t) {
-    if (!this.logEl) return console.log('[battle]', t);
-    const d = document.createElement('div');
-    d.textContent = t;
-    this.logEl.appendChild(d);
-    this.logEl.scrollTop = this.logEl.scrollHeight;
+    const line = String(t);
+    if (!this.rootEl) console.log('[battle]', line);
+    this.logs.push(line);
+    if (this.logs.length > 200) this.logs.splice(0, this.logs.length - 200);
+    if (this.rootEl) this.render();
   }
   _dlog(line){ if (this.DEBUG){ this._log(line); console.debug(line); } }
   _dlogBlock(title, obj){
@@ -312,34 +283,61 @@ export class BattleScene {
   // ===========================================================================
   // Player turn
   // ===========================================================================
-  async useSkill(skill) {
+  async useAbility(abilityId) {
     if (this.turnLock) return;
-    this.turnLock = true;
-
-    const p = this.player, e = this.enemy;
-
-    // Pay any class resource costs
-    if (skill.cost) {
-      if (!p.resources) p.resources = {};
-      for (const [res, amt] of Object.entries(skill.cost)) {
-        const have = p.resources[res] ?? 0;
-        if (have < amt) { this._log(`Not enough ${res} to use ${skill.name}.`); this.turnLock = false; return; }
-      }
-      for (const [res, amt] of Object.entries(skill.cost)) {
-        p.resources[res] = (p.resources[res] ?? 0) - amt;
-      }
+    const ability = this.actionBar.find((a) => a.id === abilityId);
+    if (!ability) return;
+    if (!this.canUseAbility(ability)) {
+      const firstCost = this._getAbilityCosts(ability)[0];
+      const label = firstCost
+        ? `${firstCost.amount} ${this._resourceLabel(firstCost.resource)}`
+        : 'resources';
+      this._log(`Not enough ${label} to use ${ability.name}.`);
+      return;
     }
 
-    this._log(`${p.name} uses ${skill.name}!`);
-    await this._applySkillEffects(p, e, skill);
+    this.turnLock = true;
 
-    if (e.hp <= 0) { this._renderHeader(); this._log(`🏆 ${e.name} is defeated!`); this.turnLock = false; return; }
+    const p = this.player;
+    const e = this.enemy;
 
-    this._renderHeader();
+    this._spendAbilityCost(ability);
+    this.render();
+
+    this._log(`${p.name} uses ${ability.name}!`);
+    await this._applySkillEffects(p, e, ability);
+
+    if (e.hp <= 0) {
+      this.render();
+      this._log(`🏆 ${e.name} is defeated!`);
+      this.turnLock = false;
+      return;
+    }
+
+    this.render();
     await this._sleep(400);
     await this._enemyTurn();
-    this._renderHeader();
+
+    if (this.player?.hp > 0) {
+      regenTurn(this.player);
+      this.turn += 1;
+    }
     this.turnLock = false;
+    this.render();
+  }
+
+  async endTurn() {
+    if (this.turnLock) return;
+    this.turnLock = true;
+    this._log(`${this.player.name} ends their turn.`);
+    this.render();
+    await this._enemyTurn();
+    if (this.player?.hp > 0) {
+      regenTurn(this.player);
+      this.turn += 1;
+    }
+    this.turnLock = false;
+    this.render();
   }
 
   // ===========================================================================
@@ -400,7 +398,7 @@ export class BattleScene {
     const rawDef = skills[skill.id];
     if (rawDef && typeof rawDef.cooldown === 'number') e._cds[skill.id] = rawDef.cooldown;
 
-    if (p.hp <= 0) { this._renderHeader(); this._log(`💀 ${p.name} has fallen...`); }
+    if (p.hp <= 0) { this.render(); this._log(`💀 ${p.name} has fallen...`); }
     this._turn++;
   }
 
@@ -494,7 +492,7 @@ export class BattleScene {
           this._log(`(effect ${fx.kind} not implemented)`);
         }
       }
-      this._renderHeader();
+      this.render();
       await this._sleep(10);
     }
   }
@@ -552,7 +550,7 @@ export class BattleScene {
       this._log(`${target.name} takes ${amount} damage.`);
       this._dlogBlock(`HP change (${target.name})`, { before, amount, after, hpMax: target.hpMax ?? before });
     }
-    this._renderHeader();
+    this.render();
   }
 
   _healTarget(target, amount) {
@@ -562,7 +560,7 @@ export class BattleScene {
     const after = target.hp;
     this._log(`${target.name} recovers ${amount} HP.`);
     this._dlogBlock(`HP change (${target.name})`, { before, amount:-amount, after, hpMax: target.hpMax ?? before });
-    this._renderHeader();
+    this.render();
   }
 
   _applyBuff(target, stat, amount) {

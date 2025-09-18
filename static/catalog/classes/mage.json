@@ -5,6 +5,14 @@
     "name": "Mage",
     "archetype": ["caster", "dps"],
     "resources": ["mana"],
+    "resourceDefinitions": {
+      "mana": {
+        "label": "Mana",
+        "maxFromStat": "mpMax",
+        "start": "full",
+        "regenPerTurn": 3
+      }
+    },
     "baseStats": { "hp": 26, "mp": 18, "atk": 3, "mag": 8, "def": 3, "spd": 5 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 3, "mp": 4, "mag": 2, "atk": 0, "def": 1, "spd": 1 } }
   },

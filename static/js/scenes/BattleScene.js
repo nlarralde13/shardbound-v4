@@ -5,9 +5,14 @@
 // - Adapts class catalogs & enemies.json into CombatManager via a small mapper
 // - Keeps your existing UI shell, removes noisy math dumps
 // -----------------------------------------------------------------------------
+// How to test:
+// 1. Open templates/battlebox.html and launch a fight for each class.
+// 2. Use abilities that spend or restore class resources and confirm the bars update instantly.
+// 3. Optionally set localStorage.DEBUG_UI=1 for extra logging.
 
 import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
-import { initFromClass, syncCanonical } from '../systems/resourceManager.js';
+import { initFromClass, syncCanonical, applyResourceCost, applyResourceGain, normalizeResourceKey, formatResourceLabel } from '../systems/resourceManager.js';
+import { createResourceBar, RESOURCE_BAR_ORDER } from '../ui/resourceBars.js';
 import { resolveAttack, fromCatalog as normalizeFromCatalog } from '/static/js/systems/combatManager.js';
 import { GameLogger } from '/static/js/sys/gameLogger.js';
 
@@ -206,50 +211,6 @@ _mountUI() {
     return box;
   }
 
-  _mkBar(label, curr, max, opts = {}) {
-    const pct = Math.max(0, Math.min(1, max > 0 ? (curr / max) : 0));
-    const wrap = document.createElement('div');
-    wrap.style.margin = '4px 0';
-
-    const head = document.createElement('div');
-    head.style.display = 'flex';
-    head.style.justifyContent = 'space-between';
-    head.style.fontSize = '12px';
-    head.style.opacity = '0.85';
-    head.innerHTML = `<span>${label}</span><span>${Math.max(0,Math.round(curr))} / ${Math.round(max || 0)}</span>`;
-
-    const bar = document.createElement('div');
-    bar.style.position = 'relative';
-    bar.style.height = '10px';
-    bar.style.borderRadius = '6px';
-    bar.style.background = 'rgba(255,255,255,0.07)';
-    bar.style.overflow = 'hidden';
-    bar.style.border = '1px solid rgba(255,255,255,0.08)';
-
-    const fill = document.createElement('div');
-    fill.style.height = '100%';
-    fill.style.width = `${pct * 100}%`;
-    fill.style.transition = 'width 200ms ease';
-    fill.style.background = opts.color || 'linear-gradient(90deg, #ff4d6d, #ff936a)';
-    bar.appendChild(fill);
-
-    if (opts.shield && opts.shield > 0) {
-      const total = (max || 0) + opts.shield;
-      const shieldPct = Math.max(0, Math.min(1, total > 0 ? (Math.max(curr,0) + opts.shield) / total : 0));
-      const shieldBar = document.createElement('div');
-      shieldBar.style.position = 'absolute';
-      shieldBar.style.right = '0';
-      shieldBar.style.top = '0';
-      shieldBar.style.bottom = '0';
-      shieldBar.style.width = `${Math.max(0, (shieldPct - pct) * 100)}%`;
-      shieldBar.style.background = 'linear-gradient(90deg, rgba(135,206,250,0.6), rgba(176,224,230,0.6))';
-      bar.appendChild(shieldBar);
-    }
-
-    wrap.append(head, bar);
-    return wrap;
-  }
-
   _mkUnitCard(title, unit, extra = '') {
     const card = document.createElement('div');
     card.style.flex = '1';
@@ -269,12 +230,81 @@ _mountUI() {
     headerRow.append(this._mkPortrait(unit.portrait), head);
     card.appendChild(headerRow);
 
-    card.appendChild(this._mkBar('HP', unit.hp ?? 0, unit.hpMax ?? (unit.hp ?? 0), { shield: unit._shield || 0 }));
-    const mpMax = unit.mpMax ?? 0;
-    if (mpMax > 0) {
-      card.appendChild(this._mkBar('MP', unit.mp ?? 0, mpMax, { color: 'linear-gradient(90deg, #4d7cff, #80b3ff)' }));
+    const hpMaxRaw = finiteNumber(unit.hpMax);
+    const hpRaw = finiteNumber(unit.hp);
+    const hpMax = hpMaxRaw != null ? Math.max(0, hpMaxRaw) : Math.max(0, hpRaw ?? 0);
+    const hpCurrent = hpRaw != null ? clampToRange(hpRaw, 0, hpMax || (hpRaw ?? 0)) : hpMax;
+    card.appendChild(createResourceBar({
+      key: 'hp',
+      label: 'HP',
+      current: hpCurrent,
+      max: hpMax,
+      shield: finiteNumber(unit._shield) ?? 0,
+    }));
+
+    const resources = this._collectResourceEntries(unit);
+    for (const res of resources) {
+      card.appendChild(createResourceBar(res));
     }
+
     return card;
+  }
+
+  _collectResourceEntries(unit) {
+    const entries = [];
+    const seen = new Set();
+    const pools = unit?.resources;
+    if (pools && typeof pools === 'object') {
+      for (const [rawKey, value] of Object.entries(pools)) {
+        if (!value || typeof value !== 'object') continue;
+        const key = normalizeResourceKey(rawKey);
+        if (!key) continue;
+        const maxRaw = finiteNumber(value.max);
+        const currentRaw = finiteNumber(value.current);
+        const max = maxRaw != null ? Math.max(0, maxRaw) : Math.max(0, currentRaw ?? 0);
+        const current = currentRaw != null ? clampToRange(currentRaw, 0, max || (currentRaw ?? 0)) : max;
+        if (max <= 0 && current <= 0) {
+          seen.add(key);
+          continue;
+        }
+        entries.push({
+          key,
+          label: value.label || formatResourceLabel(key),
+          current,
+          max,
+        });
+        seen.add(key);
+      }
+    }
+
+    if (!seen.has('mana')) {
+      const mpMaxRaw = finiteNumber(unit?.mpMax);
+      const mpRaw = finiteNumber(unit?.mp);
+      const max = mpMaxRaw != null ? Math.max(0, mpMaxRaw) : Math.max(0, mpRaw ?? 0);
+      const current = mpRaw != null ? clampToRange(mpRaw, 0, max || (mpRaw ?? 0)) : max;
+      if (max > 0 || current > 0) {
+        entries.push({
+          key: 'mana',
+          label: formatResourceLabel('mana'),
+          current,
+          max: max || current,
+        });
+      }
+    }
+
+    entries.sort((a, b) => {
+      const ai = this._resourceOrderIndex(a.key);
+      const bi = this._resourceOrderIndex(b.key);
+      if (ai !== bi) return ai - bi;
+      return a.label.localeCompare(b.label);
+    });
+
+    return entries;
+  }
+
+  _resourceOrderIndex(key) {
+    const idx = RESOURCE_BAR_ORDER.indexOf(key);
+    return idx === -1 ? RESOURCE_BAR_ORDER.length : idx;
   }
 
   _renderHeader() {
@@ -320,18 +350,20 @@ _mountUI() {
     if (this.turnLock) return;
     this.turnLock = true;
 
-    const p = this.player, e = this.enemy;
+    const p = this.player;
+    const e = this.enemy;
 
-    // Pay non-MP costs (handled here; CombatManager only reads MP)
-    if (skill.cost) {
-      if (!p.resources) p.resources = {};
-      for (const [res, amt] of Object.entries(skill.cost)) {
-        const have = p.resources[res] ?? 0;
-        if (have < amt) { this._log(`Not enough ${res} to use ${skill.name}.`); this.turnLock = false; return; }
-      }
-      for (const [res, amt] of Object.entries(skill.cost)) {
-        p.resources[res] = (p.resources[res] ?? 0) - amt;
-      }
+    const costResult = applyResourceCost(p, skill?.cost, skill?.resource);
+    const costEntries = costResult.entries || [];
+    if (!costResult.ok) {
+      const missing = costResult.missing[0];
+      const label = formatResourceLabel(missing?.key || 'resource');
+      this._log(`Not enough ${label} to use ${skill.name}.`);
+      this.turnLock = false;
+      return;
+    }
+    if (costResult.deltas.length) {
+      this._renderHeader();
     }
 
     const abilityInfo = pickSkillFields(skill) || undefined;
@@ -341,7 +373,7 @@ _mountUI() {
       skill: abilityInfo,
       actor: summarizeUnit(p),
       target: summarizeUnit(e),
-      resources: skill.cost ? scrubForLog(skill.cost) : undefined,
+      resources: costEntries.length ? scrubForLog(costEntries) : undefined,
     });
     GameLogger.info('ACTION_USED', actionPayload);
 
@@ -349,6 +381,7 @@ _mountUI() {
 
     // Build a CombatManager ability from this skill
     const ability = this._abilityFromSkill(p, skill);
+    let abilityResolved = true;
 
     // Resolve attack (hit + damage); healing/shields handled inline without manager
     if (ability) {
@@ -365,6 +398,11 @@ _mountUI() {
         this._log(`${p.name}'s attack misses!`);
       } else if (!result.ok) {
         this._log(`Cannot use ${skill.name}: ${result.reason}`);
+        abilityResolved = false;
+        if (costEntries.length) {
+          const undo = applyResourceGain(p, costEntries);
+          if (undo.deltas.length) this._renderHeader();
+        }
       }
 
       const attackerAfter = snapshotUnit(p);
@@ -378,6 +416,14 @@ _mountUI() {
     } else {
       // Non-damaging effect resolution (heal/shield/buff)
       await this._applyNonDamageEffect(p, e, skill);
+    }
+
+    if (abilityResolved) {
+      const refundResult = applyResourceGain(p, skill?.refund, skill?.resource);
+      const restoreResult = applyResourceGain(p, skill?.restore, skill?.resource);
+      if (refundResult.deltas.length || restoreResult.deltas.length) {
+        this._renderHeader();
+      }
     }
 
     if (e.hp <= 0) {
@@ -711,6 +757,18 @@ function scrubForLog(value) {
     return value.replace(EMAIL_RE, '[redacted]').replace(IP_RE, '[redacted]');
   }
   return value;
+}
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function clampToRange(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
+  if (!Number.isFinite(max)) return Math.max(min, n);
+  return Math.max(min, Math.min(max, n));
 }
 
 function snapshotUnit(unit) {

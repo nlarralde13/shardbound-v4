@@ -9,6 +9,11 @@
 import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
 import { initFromClass, syncCanonical } from '../systems/resourceManager.js';
 import { resolveAttack, fromCatalog as normalizeFromCatalog } from '/static/js/systems/combatManager.js';
+import { GameLogger } from '/static/js/sys/gameLogger.js';
+
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const IP_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+const PII_KEYS = new Set(['email', 'e-mail', 'ip', 'ip_address', 'ipaddress']);
 
 export class BattleScene {
   constructor(sm, store) {
@@ -37,7 +42,17 @@ export class BattleScene {
   // ===========================================================================
   async onEnter() {
     const state = this.store.get();
+    GameLogger.init({ sessionId: state?.session?.id ?? state?.sessionId ?? null });
+
     this.player = state.player;
+    if (this.player?.id || this.player?.name) {
+      GameLogger.setPlayer(this.player.id ?? this.player.name);
+    }
+
+    GameLogger.info('SCENE_ENTER', { scene: 'BattleScene' });
+    if (this.player) {
+      GameLogger.info('PLAYER_LOADED', { player: scrubPlayer(this.player) });
+    }
 
     // hydrate resources from class
     initFromClass(this.player.classDef, this.player);
@@ -54,6 +69,8 @@ export class BattleScene {
     if (typeof this.enemy.mpMax !== 'number') this.enemy.mpMax = this.enemy.mp ?? 0;
     if (typeof this.player.hpMax !== 'number') this.player.hpMax = this.player.hp ?? 0;
     if (typeof this.player.mpMax !== 'number') this.player.mpMax = this.player.mp ?? 0;
+
+    GameLogger.info('ENEMY_SPAWNED', { enemy: scrubEnemy(this.enemy) });
 
     // Portraits
     const classId = (this.player.classId || 'warrior').toLowerCase();
@@ -304,6 +321,17 @@ export class BattleScene {
       }
     }
 
+    const abilityInfo = pickSkillFields(skill) || undefined;
+    const attackerBefore = snapshotUnit(p);
+    const defenderBefore = snapshotUnit(e);
+    const actionPayload = dropUndefined({
+      skill: abilityInfo,
+      actor: summarizeUnit(p),
+      target: summarizeUnit(e),
+      resources: skill.cost ? scrubForLog(skill.cost) : undefined,
+    });
+    GameLogger.info('ACTION_USED', actionPayload);
+
     this._log(`${p.name} uses ${skill.name}!`);
 
     // Build a CombatManager ability from this skill
@@ -325,12 +353,32 @@ export class BattleScene {
       } else if (!result.ok) {
         this._log(`Cannot use ${skill.name}: ${result.reason}`);
       }
+
+      const attackerAfter = snapshotUnit(p);
+      const defenderAfter = snapshotUnit(e);
+      GameLogger.info('COMBAT_RESOLVE', dropUndefined({
+        ability: abilityInfo,
+        attacker: summarizeUnitDelta(attackerBefore, attackerAfter),
+        defender: summarizeUnitDelta(defenderBefore, defenderAfter),
+        result: scrubForLog(result),
+      }));
     } else {
       // Non-damaging effect resolution (heal/shield/buff)
       await this._applyNonDamageEffect(p, e, skill);
     }
 
-    if (e.hp <= 0) { this._renderHeader(); this._log(`🏆 ${e.name} is defeated!`); this.turnLock = false; return; }
+    if (e.hp <= 0) {
+      GameLogger.info('ENCOUNTER_END', dropUndefined({
+        outcome: 'victory',
+        turns: this._turn,
+        player: scrubPlayer(this.player),
+        enemy: scrubEnemy(this.enemy),
+      }));
+      this._renderHeader();
+      this._log(`🏆 ${e.name} is defeated!`);
+      this.turnLock = false;
+      return;
+    }
 
     this._renderHeader();
     await this._sleep(400);
@@ -387,29 +435,82 @@ export class BattleScene {
   }
 
   async _applyNonDamageEffect(source, target, skill) {
+    const abilityInfo = pickSkillFields(skill) || undefined;
     for (const fx of (skill.effects || [])) {
       switch (fx.kind) {
         case 'heal': {
+          const beforeState = snapshotUnit(source);
           const amount = Math.max(1, Math.round(fx.amount ?? 5));
           const before = source.hp ?? 0;
           const max = (source.hpMax ?? before);
           source.hp = Math.min(max, before + amount);
           this._log(`${source.name} recovers ${amount} HP.`);
+          const afterState = snapshotUnit(source);
+          GameLogger.info('HEAL_APPLIED', dropUndefined({
+            amount,
+            target: summarizeUnitDelta(beforeState, afterState),
+            actor: summarizeUnit(source),
+            ability: abilityInfo,
+          }));
           break;
         }
         case 'shield': {
-          source._shield = (source._shield ?? 0) + (fx.amount ?? 5);
-          this._log(`${source.name} gains a shield (${fx.amount ?? 5}).`);
+          const beforeState = snapshotUnit(source);
+          const shieldAmount = fx.amount ?? 5;
+          source._shield = (source._shield ?? 0) + shieldAmount;
+          this._log(`${source.name} gains a shield (${shieldAmount}).`);
+          const afterState = snapshotUnit(source);
+          GameLogger.info('SHIELD_APPLIED', dropUndefined({
+            amount: shieldAmount,
+            duration: fx.duration ?? 0,
+            target: summarizeUnitDelta(beforeState, afterState),
+            actor: summarizeUnit(source),
+            ability: abilityInfo,
+          }));
           break;
         }
         case 'buff': {
           const stat = fx.stat; const amt = Number(fx.amount || 0);
+          const beforeValue = stat ? source[stat] : undefined;
           source[stat] = (source[stat] ?? 0) + amt;
           this._log(`${source.name}'s ${stat} ${(amt >= 0 ? 'rises' : 'drops')} by ${Math.abs(amt)}.`);
+          const afterValue = stat ? source[stat] : undefined;
+          GameLogger.info('BUFF_APPLIED', dropUndefined({
+            stat,
+            amount: amt,
+            duration: fx.duration ?? 0,
+            target: summarizeUnit(source),
+            value_before: beforeValue,
+            value_after: afterValue,
+            actor: summarizeUnit(source),
+            ability: abilityInfo,
+          }));
           break;
         }
-        case 'root': { this._log(`${target.name} is rooted in place.`); break; }
-        case 'vuln': { target._vuln = Math.max(0, (target._vuln || 0) + (fx.amount ?? 0)); this._log(`${target.name} is exposed.`); break; }
+        case 'root': {
+          this._log(`${target.name} is rooted in place.`);
+          GameLogger.info('ROOT_APPLIED', dropUndefined({
+            target: summarizeUnit(target),
+            actor: summarizeUnit(source),
+            duration: fx.duration ?? 0,
+            ability: abilityInfo,
+          }));
+          break;
+        }
+        case 'vuln': {
+          const previous = target._vuln || 0;
+          const applied = fx.amount ?? 0;
+          target._vuln = Math.max(0, previous + applied);
+          this._log(`${target.name} is exposed.`);
+          GameLogger.info('VULN_APPLIED', dropUndefined({
+            amount: applied,
+            total: target._vuln,
+            target: summarizeUnit(target),
+            actor: summarizeUnit(source),
+            ability: abilityInfo,
+          }));
+          break;
+        }
         default: break;
       }
     }
@@ -480,7 +581,16 @@ export class BattleScene {
     const rawDef = skills[skill.id];
     if (rawDef && typeof rawDef.cooldown === 'number') e._cds[skill.id] = rawDef.cooldown;
 
-    if (p.hp <= 0) { this._renderHeader(); this._log(`💀 ${p.name} has fallen...`); }
+    if (p.hp <= 0) {
+      GameLogger.info('ENCOUNTER_END', dropUndefined({
+        outcome: 'defeat',
+        turns: this._turn,
+        player: scrubPlayer(p),
+        enemy: scrubEnemy(e),
+      }));
+      this._renderHeader();
+      this._log(`💀 ${p.name} has fallen...`);
+    }
     this._turn++;
   }
 
@@ -542,5 +652,104 @@ export class BattleScene {
   _sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
   _rand(min, max) { return min + Math.random() * (max - min); }
   _randInt(min, max) { return Math.floor(this._rand(min, max + 1)); }
+}
+
+function dropUndefined(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj || {})) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function scrubForLog(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => scrubForLog(entry));
+  }
+  if (value && typeof value === 'object') {
+    const result = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (PII_KEYS.has(key.toLowerCase())) {
+        result[key] = '[redacted]';
+      } else {
+        const cleaned = scrubForLog(val);
+        if (cleaned !== undefined) result[key] = cleaned;
+      }
+    }
+    return result;
+  }
+  if (typeof value === 'string') {
+    return value.replace(EMAIL_RE, '[redacted]').replace(IP_RE, '[redacted]');
+  }
+  return value;
+}
+
+function snapshotUnit(unit) {
+  if (!unit) return null;
+  return {
+    id: unit.id ?? null,
+    name: unit.name ?? null,
+    classId: unit.classId ?? null,
+    level: unit.level ?? null,
+    hp: unit.hp ?? null,
+    hpMax: unit.hpMax ?? null,
+    mp: unit.mp ?? null,
+    mpMax: unit.mpMax ?? null,
+    atk: unit.atk ?? null,
+    mag: unit.mag ?? null,
+    def: unit.def ?? null,
+    spd: unit.spd ?? null,
+    shield: unit._shield ?? 0,
+  };
+}
+
+function summarizeUnit(unit) {
+  const snapshot = snapshotUnit(unit);
+  return snapshot ? scrubForLog(dropUndefined(snapshot)) : null;
+}
+
+function summarizeUnitDelta(before, after) {
+  if (!before && !after) return null;
+  const base = before || after || {};
+  return scrubForLog(dropUndefined({
+    id: base.id ?? null,
+    name: base.name ?? null,
+    classId: base.classId ?? null,
+    level: base.level ?? null,
+    hpMax: base.hpMax ?? null,
+    mpMax: base.mpMax ?? null,
+    atk: base.atk ?? null,
+    mag: base.mag ?? null,
+    def: base.def ?? null,
+    spd: base.spd ?? null,
+    hp_before: before?.hp ?? null,
+    hp_after: after?.hp ?? (before?.hp ?? null),
+    mp_before: before?.mp ?? null,
+    mp_after: after?.mp ?? (before?.mp ?? null),
+    shield_before: before?.shield ?? 0,
+    shield_after: after?.shield ?? (before?.shield ?? 0),
+  }));
+}
+
+function pickSkillFields(skill) {
+  if (!skill) return null;
+  const tags = Array.isArray(skill.tags) && skill.tags.length ? [...skill.tags] : undefined;
+  return scrubForLog(dropUndefined({
+    id: skill.id ?? null,
+    name: skill.name ?? null,
+    type: skill.type ?? null,
+    target: skill.target ?? null,
+    tags,
+  }));
+}
+
+function scrubPlayer(player) {
+  return summarizeUnit(player);
+}
+
+function scrubEnemy(enemy) {
+  return summarizeUnit(enemy);
 }
 

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1, maximum-scale=1"
+/>
+<title>Shardbound • Gameplay Log Console</title>
+<style>
+  :root{
+    --bg:#0b0f14;
+    --panel:#0f1822cc; /* glass */
+    --panel-strong:#0f1822f2;
+    --text:#d7e2f1;
+    --muted:#8aa0b8;
+    --accent:#28d7ff;
+    --accent-2:#b66dff;
+    --ok:#38f27a;
+    --warn:#ffd166;
+    --err:#ff5d73;
+    --info:#67d3ff;
+    --grid: rgba(40,215,255,0.12);
+  }
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(182,109,255,0.14), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(40,215,255,0.16), transparent 60%),
+      linear-gradient(180deg, #0a0f14 0%, #0a0d12 100%);
+    color:var(--text);
+    font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    letter-spacing:.2px;
+  }
+  /* Subtle scan grid for Stark vibes */
+  .grid-overlay:before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+    background-size: 64px 64px, 64px 64px;
+    pointer-events:none; mix-blend-mode:screen;
+  }
+
+  .shell{
+    max-width:1200px; margin:24px auto; padding:0 16px;
+  }
+  .header{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; margin-bottom:16px;
+  }
+  .brand{
+    display:flex; align-items:center; gap:12px;
+    padding:10px 14px; border-radius:14px;
+    background:linear-gradient(135deg, rgba(40,215,255,0.16), rgba(182,109,255,0.12));
+    box-shadow: 0 0 0 1px rgba(40,215,255,0.25) inset, 0 10px 30px rgba(0,0,0,0.35);
+  }
+  .brand svg{ width:28px; height:28px; }
+  .brand h1{ margin:0; font-size:18px; font-weight:700; letter-spacing:.4px; }
+  .controls, .filters{
+    display:flex; flex-wrap:wrap; gap:10px;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid rgba(40,215,255,0.25);
+    border-radius:16px;
+    backdrop-filter: blur(10px);
+    box-shadow:
+      0 0 0 1px rgba(182,109,255,0.15) inset,
+      0 10px 30px rgba(0,0,0,0.4);
+  }
+  .row{ display:flex; gap:12px; padding:12px; }
+  button, select, input[type="text"], input[type="datetime-local"]{
+    background: #0b121a;
+    color: var(--text);
+    border:1px solid rgba(40,215,255,0.35);
+    border-radius:12px;
+    padding:10px 12px;
+    font-size:14px;
+    outline:none;
+    box-shadow: 0 0 0 1px rgba(182,109,255,0.12) inset;
+  }
+  button{ cursor:pointer; transition: all .15s ease; }
+  button:hover{ transform: translateY(-1px); box-shadow: 0 10px 18px rgba(40,215,255,0.15); }
+  .btn-accent{
+    background: linear-gradient(135deg, rgba(40,215,255,0.25), rgba(182,109,255,0.25));
+    border-color: rgba(40,215,255,0.55);
+  }
+  .btn-ghost{
+    background: transparent;
+  }
+  .switch{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px;
+    background: #0b121acc; border:1px solid rgba(40,215,255,0.35);
+  }
+  .switch input{ accent-color: var(--accent); }
+  .count-badge{
+    padding:6px 10px; background:#0b121a; border:1px solid rgba(182,109,255,0.35);
+    border-radius:999px; font-size:12px; color:var(--muted);
+  }
+
+  /* Console */
+  .console{
+    height:70vh; overflow:auto; padding:8px; border-top-left-radius:0; border-top-right-radius:0;
+    scroll-behavior:smooth;
+  }
+  .console-header{
+    padding:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    border-bottom:1px solid rgba(40,215,255,0.25);
+    border-top-left-radius:16px; border-top-right-radius:16px;
+    background:linear-gradient(180deg, var(--panel-strong), transparent);
+  }
+  .log{
+    padding:10px 12px; margin:8px; border-radius:12px;
+    border:1px solid rgba(40,215,255,0.2);
+    background: rgba(12,18,26,0.7);
+  }
+  .log:hover{ border-color: rgba(182,109,255,0.35); background: rgba(12,18,26,0.9); }
+  .log-head{
+    display:grid; grid-template-columns: 175px 80px 180px 1fr 1fr;
+    gap:10px; align-items:center; font-size:12px; color:var(--muted);
+  }
+  .ts{ color:var(--info); font-variant-numeric: tabular-nums; }
+  .level{ text-transform:uppercase; font-weight:700; letter-spacing:.4px; }
+  .lvl-info{ color:var(--info); }
+  .lvl-warn{ color:var(--warn); }
+  .lvl-error,.lvl-err{ color:var(--err); }
+  .lvl-debug{ color:var(--muted); }
+  .event{ color:#fff; font-weight:600; }
+  .pill{
+    display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid rgba(40,215,255,0.35);
+    color:var(--text); background:rgba(40,215,255,0.08); font-size:11px;
+  }
+  details.payload{
+    grid-column: 1 / -1;
+    margin-top:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size:12px; color:#d1f1ff;
+    background:#0b121a; border:1px solid rgba(40,215,255,0.18); border-radius:10px; padding:8px 10px;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  details > summary{
+    cursor:pointer; color:var(--accent); outline:none; user-select:none;
+  }
+  .footer{
+    display:flex; justify-content:space-between; align-items:center; padding:10px 14px;
+    color:var(--muted); font-size:12px;
+  }
+  .status-dot{
+    width:10px; height:10px; border-radius:50%;
+    background: var(--err);
+    box-shadow: 0 0 10px currentColor;
+    display:inline-block; margin-right:8px;
+  }
+  .status-dot.ok{ background: var(--ok); }
+  .thin{ opacity:.8 }
+  .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0b121a; padding:2px 6px; border-radius:6px; border:1px solid rgba(40,215,255,0.25); }
+</style>
+</head>
+<body>
+<div class="grid-overlay"></div>
+<div class="shell">
+  <div class="header">
+    <div class="brand">
+      <!-- arc-reactor-ish mark -->
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" x2="1">
+            <stop offset="0" stop-color="#28d7ff"/>
+            <stop offset="1" stop-color="#b66dff"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="28" fill="none" stroke="url(#g)" stroke-width="3"/>
+        <circle cx="32" cy="32" r="6" fill="url(#g)"/>
+        <path d="M32 8 L54 48 H10 Z" fill="none" stroke="url(#g)" stroke-width="2"/>
+      </svg>
+      <h1>Gameplay Log Console</h1>
+      <span class="count-badge" id="count">0 entries</span>
+    </div>
+    <div class="controls">
+      <button id="refreshBtn" class="btn-accent">⟳ Manual Refresh</button>
+      <label class="switch"><input type="checkbox" id="autoRefresh" checked> Auto refresh (30s)</label>
+      <label class="switch"><input type="checkbox" id="followTail" checked> Follow tail</label>
+      <button id="clearBtn" class="btn-ghost">Clear</button>
+      <button id="downloadBtn" class="btn-ghost">Download View</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="console-header">
+      <div class="filters">
+        <select id="levelFilter" title="Level">
+          <option value="">Level: Any</option>
+          <option>INFO</option>
+          <option>WARN</option>
+          <option>ERROR</option>
+          <option>DEBUG</option>
+        </select>
+        <input id="eventFilter" type="text" placeholder="Event contains…" />
+        <input id="playerFilter" type="text" placeholder="Player contains…" />
+        <input id="searchFilter" type="text" placeholder="Search payload/message…" style="min-width:260px;" />
+        <input id="sinceFilter" type="datetime-local" title="Since time (local)"/>
+        <select id="limitFilter" title="Limit">
+          <option value="250">Limit: 250</option>
+          <option value="500" selected>Limit: 500</option>
+          <option value="1000">Limit: 1000</option>
+          <option value="0">No limit</option>
+        </select>
+      </div>
+      <div class="thin">
+        <span class="status-dot" id="netDot"></span>
+        <span id="status">Idle</span>
+      </div>
+    </div>
+    <div id="console" class="console"></div>
+    <div class="footer">
+      <div>Tips: Press <span class="kbd">R</span> to refresh, <span class="kbd">F</span> to toggle Follow tail, <span class="kbd">A</span> to toggle Auto.</div>
+      <div>Source: <code>/logs/gameplay.log</code></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const LOG_URL = '/logs/gameplay.log';
+  const el = {
+    console: document.getElementById('console'),
+    count: document.getElementById('count'),
+    status: document.getElementById('status'),
+    netDot: document.getElementById('netDot'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    clearBtn: document.getElementById('clearBtn'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    autoRefresh: document.getElementById('autoRefresh'),
+    followTail: document.getElementById('followTail'),
+    levelFilter: document.getElementById('levelFilter'),
+    eventFilter: document.getElementById('eventFilter'),
+    playerFilter: document.getElementById('playerFilter'),
+    searchFilter: document.getElementById('searchFilter'),
+    sinceFilter: document.getElementById('sinceFilter'),
+    limitFilter: document.getElementById('limitFilter'),
+  };
+
+  let autoTimer = null;
+  const AUTO_MS = 30_000;
+
+  function setStatus(text, ok=true){
+    el.status.textContent = text;
+    el.netDot.classList.toggle('ok', ok);
+  }
+
+  function classForLevel(lvl){
+    const s = (lvl || '').toLowerCase();
+    if(s.startsWith('err')) return 'lvl-error';
+    if(s.startsWith('war')) return 'lvl-warn';
+    if(s.startsWith('deb')) return 'lvl-debug';
+    return 'lvl-info';
+  }
+
+  function parseLines(text){
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const out = [];
+    for(const line of lines){
+      try {
+        out.push(JSON.parse(line));
+      } catch(e){
+        // Non-JSON line fallback
+        out.push({ts:null, level:'INFO', event:'TEXT', message: line});
+      }
+    }
+    return out;
+  }
+
+  function matchesFilters(rec){
+    const lvlF = el.levelFilter.value.trim();
+    if(lvlF && (rec.level||'').toUpperCase() !== lvlF) return false;
+
+    const evF = el.eventFilter.value.trim().toLowerCase();
+    if(evF && !((rec.event||'').toLowerCase().includes(evF))) return false;
+
+    const pF = el.playerFilter.value.trim().toLowerCase();
+    if(pF && !((rec.player_id||'').toLowerCase().includes(pF))) return false;
+
+    const sF = el.searchFilter.value.trim().toLowerCase();
+    if(sF){
+      const blob = JSON.stringify(rec).toLowerCase();
+      if(!blob.includes(sF)) return false;
+    }
+
+    const since = el.sinceFilter.value ? new Date(el.sinceFilter.value) : null;
+    if(since && rec.ts){
+      const rts = new Date(rec.ts);
+      if(!(rts >= since)) return false;
+    }
+
+    return true;
+  }
+
+  function render(records){
+    const lim = parseInt(el.limitFilter.value, 10);
+    const filtered = records.filter(matchesFilters);
+    const limited = (lim>0) ? filtered.slice(-lim) : filtered;
+
+    el.console.innerHTML = '';
+    for(const r of limited){
+      const ts = r.ts ? new Date(r.ts).toLocaleString() : '';
+      const lvl = (r.level||'').toUpperCase();
+      const event = r.event || r.logger || '—';
+      const session = r.session_id || '—';
+      const player = r.player_id || '—';
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'log';
+
+      const head = document.createElement('div');
+      head.className = 'log-head';
+      head.innerHTML = `
+        <div class="ts">${ts}</div>
+        <div class="level ${classForLevel(lvl)}">${lvl||'INFO'}</div>
+        <div class="event">${event}</div>
+        <div><span class="pill">session</span> ${session}</div>
+        <div><span class="pill">player</span> ${player}</div>
+      `;
+      wrapper.appendChild(head);
+
+      // payload/details (collapsible)
+      const details = document.createElement('details');
+      details.className = 'payload';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Payload';
+      details.appendChild(summary);
+
+      const pre = document.createElement('pre');
+      pre.textContent = JSON.stringify(r.payload ?? r, null, 2);
+      details.appendChild(pre);
+
+      wrapper.appendChild(details);
+      el.console.appendChild(wrapper);
+    }
+
+    el.count.textContent = `${limited.length} entr${limited.length===1?'y':'ies'}`;
+
+    if(el.followTail.checked){
+      el.console.scrollTop = el.console.scrollHeight;
+    }
+  }
+
+  async function fetchLogs(){
+    setStatus('Fetching…', true);
+    try{
+      const resp = await fetch(LOG_URL, { cache: 'no-store' });
+      if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      const records = parseLines(text);
+      render(records);
+      setStatus(`Updated @ ${new Date().toLocaleTimeString()}`, true);
+    }catch(err){
+      setStatus(`Error: ${err.message}`, false);
+      console.error('[log-viewer] fetch error', err);
+    }
+  }
+
+  function scheduleAuto(){
+    if(autoTimer) clearInterval(autoTimer);
+    if(el.autoRefresh.checked){
+      autoTimer = setInterval(fetchLogs, AUTO_MS);
+    }
+  }
+
+  // Actions
+  el.refreshBtn.addEventListener('click', fetchLogs);
+  el.clearBtn.addEventListener('click', () => {
+    el.console.innerHTML = '';
+    el.count.textContent = '0 entries';
+  });
+  el.downloadBtn.addEventListener('click', () => {
+    const items = [...el.console.querySelectorAll('.log')].map((node,i) => {
+      const ts = node.querySelector('.ts')?.textContent ?? '';
+      const lvl = node.querySelector('.level')?.textContent ?? '';
+      const ev  = node.querySelector('.event')?.textContent ?? '';
+      const pill = node.querySelectorAll('.pill');
+      const sess = pill[0]?.nextSibling?.textContent?.trim() ?? '';
+      const player = pill[1]?.nextSibling?.textContent?.trim() ?? '';
+      const json = node.querySelector('pre')?.textContent ?? '';
+      return { ts, lvl, event: ev, session: sess, player, payload: JSON.parse(json || '{}') };
+    });
+    const blob = new Blob([JSON.stringify(items, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `log_view_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  el.autoRefresh.addEventListener('change', scheduleAuto);
+  [el.levelFilter, el.eventFilter, el.playerFilter, el.searchFilter, el.sinceFilter, el.limitFilter]
+    .forEach(input => input.addEventListener('input', fetchLogs));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if(e.key === 'r' || e.key === 'R'){ e.preventDefault(); fetchLogs(); }
+    if(e.key === 'f' || e.key === 'F'){ e.preventDefault(); el.followTail.checked = !el.followTail.checked; }
+    if(e.key === 'a' || e.key === 'A'){ e.preventDefault(); el.autoRefresh.checked = !el.autoRefresh.checked; scheduleAuto(); }
+  });
+
+  // First run
+  fetchLogs();
+  scheduleAuto();
+})();
+</script>
+</body>
+</html>

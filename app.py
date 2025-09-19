@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from flask import Flask, render_template
+from flask import Flask, render_template, send_file, make_response
 
 from server.middleware.request_context import assign_request_id
 from server.routes.logs import bp as logs_bp
@@ -24,6 +24,16 @@ def index():
 def battlebox():
     return render_template("battlebox.html")
 
+
+@app.route("/logs/gameplay.log")
+def gameplay_log():
+  resp = make_response(send_file("logs/gameplay.log"))
+  resp.headers["Cache-Control"] = "no-store, must-revalidate"
+  return resp
+
+@app.route("/logs")
+def logs_():
+    return render_template("logviewer.html")
 
 if __name__ == "__main__":
     # Dev server

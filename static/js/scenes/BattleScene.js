@@ -59,6 +59,8 @@ export class BattleScene {
     syncCanonical(this.player);
 
     const payload = this.sm.getPayload?.() || {};
+    this._applyBackground(payload.background || localStorage.getItem('battle_bg') || '');
+
     this.enemy = payload.encounter || {
       id: 'slime', name: 'Gloomslick Slime', level: 1,
       hp: 24, atk: 5, mag: 0, def: 2, spd: 3
@@ -117,56 +119,67 @@ export class BattleScene {
   // ===========================================================================
   // UI
   // ===========================================================================
-  _mountUI() {
-    const host = this.sm.overlay || document.body;
+  // Mount the HUD *inside* the viewer so it overlays the scene.
+_mountUI() {
+  // Prefer the viewer root; fall back to SM overlay; then body.
+  const host =
+    document.getElementById('sceneMount') ||
+    (this.sm && this.sm.overlay) ||
+    document.body;
 
-    const root = document.createElement('div');
-    root.id = 'battle-ui';
-    root.style.position = 'absolute';
-    root.style.left = '16px';
-    root.style.right = '16px';
-    root.style.bottom = '16px';
-    root.style.padding = '12px';
-    root.style.background = 'rgba(12,16,24,0.72)';
-    root.style.border = '1px solid rgba(255,255,255,0.08)';
-    root.style.borderRadius = '12px';
-    root.style.backdropFilter = 'blur(4px)';
-    root.style.color = '#dbe3f0';
-    root.style.font = '14px/1.4 system-ui, sans-serif';
-    root.style.pointerEvents = 'auto';
-
-    const hud = document.createElement('div');
-    hud.id = 'battle-hud';
-    hud.style.display = 'flex';
-    hud.style.justifyContent = 'space-between';
-    hud.style.gap = '12px';
-    hud.style.marginBottom = '8px';
-
-    const bar = document.createElement('div');
-    bar.id = 'battle-actions';
-    bar.style.display = 'flex';
-    bar.style.flexWrap = 'wrap';
-    bar.style.gap = '8px';
-    bar.style.marginTop = '8px';
-    bar.style.marginBottom = '8px';
-
-    const log = document.createElement('div');
-    log.id = 'battle-log';
-    log.style.maxHeight = '200px';
-    log.style.overflow = 'auto';
-    log.style.padding = '8px';
-    log.style.background = 'rgba(0,0,0,0.25)';
-    log.style.borderRadius = '8px';
-    log.style.border = '1px solid rgba(255,255,255,0.06)';
-
-    root.append(hud, bar, log);
-    host.appendChild(root);
-
-    this.uiRoot = root;
-    this.hudEl = hud;
-    this.actionBarEl = bar;
-    this.logEl = log;
+  // Ensure the viewer is a positioned container
+  if (host && getComputedStyle(host).position === 'static') {
+    host.style.position = 'relative';
   }
+
+  const root = document.createElement('div');
+  root.id = 'battle-ui';
+  root.style.position = 'absolute';
+  root.style.left = '16px';
+  root.style.right = '16px';
+  root.style.bottom = '16px';
+  root.style.zIndex = '20';
+  root.style.padding = '12px';
+  root.style.background = 'rgba(12,16,24,0.72)'; // translucent overlay
+  root.style.border = '1px solid rgba(255,255,255,0.08)';
+  root.style.borderRadius = '12px';
+  root.style.backdropFilter = 'blur(6px)';       // frosted glass
+  root.style.color = '#dbe3f0';
+  root.style.font = '14px/1.4 system-ui, sans-serif';
+
+  const hud = document.createElement('div');
+  hud.id = 'battle-hud';
+  hud.style.display = 'flex';
+  hud.style.justifyContent = 'space-between';
+  hud.style.gap = '12px';
+  hud.style.marginBottom = '8px';
+
+  const bar = document.createElement('div');
+  bar.id = 'battle-actions';
+  bar.style.display = 'flex';
+  bar.style.flexWrap = 'wrap';
+  bar.style.gap = '8px';
+  bar.style.marginTop = '8px';
+  bar.style.marginBottom = '8px';
+
+  const log = document.createElement('div');
+  log.id = 'battle-log';
+  log.style.maxHeight = '200px';
+  log.style.overflow = 'auto';
+  log.style.padding = '8px';
+  log.style.background = 'rgba(0,0,0,0.25)';     // slightly more transparent console
+  log.style.borderRadius = '8px';
+  log.style.border = '1px solid rgba(255,255,255,0.06)';
+
+  root.append(hud, bar, log);
+  host.appendChild(root);
+
+  this.uiRoot = root;
+  this.hudEl = hud;
+  this.actionBarEl = bar;
+  this.logEl = log;
+}
+
 
   _unmountUI() {
     if (this.uiRoot && this.uiRoot.parentNode) this.uiRoot.parentNode.removeChild(this.uiRoot);
@@ -652,6 +665,20 @@ export class BattleScene {
   _sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
   _rand(min, max) { return min + Math.random() * (max - min); }
   _randInt(min, max) { return Math.floor(this._rand(min, max + 1)); }
+  _applyBackground(bgUrl) {
+    const mount = document.getElementById('sceneMount');
+    if (!mount) return;
+    if (bgUrl) {
+      mount.style.backgroundImage = `url(${bgUrl})`;
+      mount.style.backgroundSize = 'cover';
+      mount.style.backgroundPosition = 'center';
+      mount.style.backgroundRepeat = 'no-repeat';
+      // Keep a dark base in case image has transparency
+      mount.style.backgroundColor = '#0b111b';
+    } else {
+      mount.style.backgroundImage = 'none';
+    }
+  }
 }
 
 function dropUndefined(obj) {
@@ -752,4 +779,5 @@ function scrubPlayer(player) {
 function scrubEnemy(enemy) {
   return summarizeUnit(enemy);
 }
+
 

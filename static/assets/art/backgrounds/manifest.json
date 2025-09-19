@@ -1,0 +1,9 @@
+{
+  "basePath": "/static/assets/art/backgrounds/",
+  "backgrounds": [
+    { "id": "none",        "label": "— None —",   "file": "" },
+    { "id": "goblin_camp", "label": "Goblin Camp","file": "goblin_camp.png" },
+    { "id": "sewers",      "label": "Sewers",     "file": "sewers.png" },
+    { "id": "shard_peak",  "label": "Shard Peak", "file": "shard_peak.png" }
+  ]
+}

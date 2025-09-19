@@ -36,14 +36,26 @@
     </div>
 
     <div class="panel center">
-      <h2>Battle Viewer</h2>
-      <div id="sceneMount" style="position:relative; height:80vh; background:#0b111b; border:1px solid #2a3242; border-radius:8px;"></div>
-      <div id="sceneOverlay"></div>
-      <div class="row" style="margin-top:8px">
-        <div class="kv"><span>K_def</span><strong id="kdefVal">12</strong></div>
-        <input type="range" id="kdefSlider" min="6" max="24" step="1" value="12" />
-      </div>
-    </div>
+  <h2>Battle Viewer</h2>
+
+  <!-- Background picker -->
+  <div class="controls" style="margin-bottom:6px">
+    <label style="display:flex; gap:8px; align-items:center;">
+      <span>Background</span>
+      <select id="bgSelect"></select>
+      <input id="bgCustom" placeholder="filename.png or full URL"
+             style="flex:1; min-width:220px; background:#141b2a; border:1px solid #2a3242; color:#dbe3f0; border-radius:6px; padding:6px;" />
+      <button id="bgApply">Apply</button>
+      <button id="bgClear">Clear</button>
+    </label>
+  </div>
+
+  <div id="sceneMount" style="position:relative; height:80vh; background:#0b111b; border:1px solid #2a3242; border-radius:8px; overflow:hidden;"></div>
+  <!-- sceneOverlay is optional now; you can keep or remove. -->
+  <!-- <div id="sceneOverlay"></div> -->
+
+  <div class="row" style="margin-top:8px">
+
 
     <div class="panel">
       <h2>Enemy</h2>
@@ -53,5 +65,111 @@
   </div>
 
   <script type="module" src="/static/js/sandbox/battleSandbox.js"></script>
+  <script type="module">
+    const MANIFEST_URL = '/static/assets/art/backgrounds/manifest.json';
+
+    const selectEl = document.getElementById('bgSelect');
+    const customEl = document.getElementById('bgCustom');
+    const applyBtn = document.getElementById('bgApply');
+    const clearBtn = document.getElementById('bgClear');
+    const mount    = document.getElementById('sceneMount');
+
+    function applyBackground(url) {
+      mount.style.backgroundImage    = url ? `url(${url})` : 'none';
+      mount.style.backgroundSize     = 'cover';
+      mount.style.backgroundPosition = 'center';
+      mount.style.backgroundRepeat   = 'no-repeat';
+      if (url) mount.style.backgroundColor = '#0b111b';
+      localStorage.setItem('battle_bg', url || '');
+    }
+
+    function option(label, value, id='') {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      if (id) o.dataset.id = id;
+      return o;
+    }
+
+    async function loadManifest() {
+      try {
+        const res = await fetch(MANIFEST_URL, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        console.warn('[bg] manifest load failed, using fallback:', e);
+        // Fallback matches your current tree
+        return {
+          basePath: '/static/assets/art/backgrounds/',
+          backgrounds: [
+            { id: 'none',        label: '— None —',   file: '' },
+            { id: 'goblin_camp', label: 'Goblin Camp',file: 'goblin_camp.png' },
+            { id: 'sewers',      label: 'Sewers',     file: 'sewers.png' },
+            { id: 'shard_peak',  label: 'Shard Peak', file: 'shard_peak.png' }
+          ]
+        };
+      }
+    }
+
+    function buildSelect(manifest) {
+      const base = manifest.basePath || '';
+      const list = manifest.backgrounds || [];
+      selectEl.innerHTML = '';
+
+      // Ensure "None" is first even if not provided
+      const none = list.find(b => !b.file) || { id: 'none', label: '— None —', file: '' };
+      selectEl.appendChild(option(none.label || '— None —', '', none.id || 'none'));
+
+      for (const b of list) {
+        if (!b.file) continue; // already added None
+        const url = base + b.file;
+        selectEl.appendChild(option(b.label || b.file, url, b.id || ''));
+      }
+    }
+
+    function restore(manifest) {
+      const saved = localStorage.getItem('battle_bg') || '';
+      if (saved) {
+        applyBackground(saved);
+        const match = [...selectEl.options].find(o => o.value === saved);
+        if (match) selectEl.value = saved;
+        else customEl.value = saved.startsWith(manifest.basePath) ? saved.slice(manifest.basePath.length) : saved;
+      } else {
+        selectEl.value = '';
+      }
+    }
+
+    // Events
+    selectEl.addEventListener('change', () => {
+      customEl.value = '';
+      applyBackground(selectEl.value || '');
+    });
+
+    applyBtn.addEventListener('click', () => {
+      const v = (customEl.value || '').trim();
+      if (!v) { selectEl.value = ''; applyBackground(''); return; }
+      const base = customEl.value.startsWith('http') ? '' : (JSON.parse(sessionStorage.getItem('bg_manifest') || '{}').basePath || '/static/assets/art/backgrounds/');
+      const url = base + v;
+      selectEl.value = ''; // custom overrides select
+      applyBackground(url);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      selectEl.value = '';
+      customEl.value = '';
+      applyBackground('');
+    });
+
+    // Boot
+    (async () => {
+      const manifest = await loadManifest();
+      sessionStorage.setItem('bg_manifest', JSON.stringify(manifest)); // for Apply(custom) basePath
+      buildSelect(manifest);
+      restore(manifest);
+    })();
+  </script>
+
+
+
 </body>
 </html>

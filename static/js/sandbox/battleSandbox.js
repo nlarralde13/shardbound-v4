@@ -1,7 +1,7 @@
 // /static/js/sandbox/battleSandbox.js
 // - Lists classes from a small manifest: /static/catalog/classes/index.json
 // - Loads enemies from /static/catalog/enemies.json (your schema) and ADAPTS them
-// - Starts BattleScene with chosen class/enemy + K_DEF slider
+// - Starts BattleScene with chosen class/enemy + optional K_DEF slider
 //
 // Requires: BattleScene.js, classLoader.js
 
@@ -15,9 +15,9 @@ const ui = {
   levelInput: document.getElementById('levelInput'),
   fightBtn:   document.getElementById('fightBtn'),
   mount:      document.getElementById('sceneMount'),
-  overlay:    document.getElementById('sceneOverlay'),
-  kdefSlider: document.getElementById('kdefSlider'),
-  kdefVal:    document.getElementById('kdefVal'),
+  overlay:    document.getElementById('sceneOverlay'), // may be null (optional)
+  kdefSlider: document.getElementById('kdefSlider'),   // may be null (optional)
+  kdefVal:    document.getElementById('kdefVal'),      // may be null (optional)
 };
 
 let selectedClass = 'warrior';
@@ -25,10 +25,13 @@ let selectedEnemyId = null;
 let enemies = {};
 let classes = [];
 
+/* ---------- helpers ---------- */
 function selectBtn(listEl, id) {
+  if (!listEl) return;
   [...listEl.querySelectorAll('button')].forEach(b => b.classList.toggle('active', b.dataset.id === id));
 }
 
+/* ---------- data loads ---------- */
 async function loadClassIndex() {
   const res = await fetch('/static/catalog/classes/index.json');
   if (!res.ok) throw new Error('Missing /static/catalog/classes/index.json');
@@ -49,7 +52,9 @@ async function loadEnemies() {
   enemies = out;
 }
 
+/* ---------- renderers ---------- */
 function renderClassList() {
+  if (!ui.classList) return;
   ui.classList.innerHTML = '';
   classes.forEach(c => {
     const btn = document.createElement('button');
@@ -64,6 +69,7 @@ function renderClassList() {
 }
 
 function renderEnemyList() {
+  if (!ui.enemyList) return;
   ui.enemyList.innerHTML = '';
   const list = Object.values(enemies);
   list.forEach(e => {
@@ -76,20 +82,28 @@ function renderEnemyList() {
   if (list.length) { selectedEnemyId = list[0].id; selectBtn(ui.enemyList, selectedEnemyId); }
 }
 
-// Tiny host for the scene
+/* ---------- tiny scene manager ---------- */
 class SandboxSceneManager {
   constructor(mountEl, overlayEl) { this.mount = mountEl; this.overlay = overlayEl; this._payload = null; }
   getPayload(){ return this._payload; }
   switchTo() {}
 }
 
-let K_DEF = Number(ui.kdefSlider.value);
-ui.kdefSlider.addEventListener('input', () => { K_DEF = Number(ui.kdefSlider.value); ui.kdefVal.textContent = String(K_DEF); });
+/* ---------- optional K_DEF slider ---------- */
+let K_DEF = 0;
+if (ui.kdefSlider) {
+  K_DEF = Number(ui.kdefSlider.value || 0);
+  ui.kdefSlider.addEventListener('input', () => {
+    K_DEF = Number(ui.kdefSlider.value || 0);
+    if (ui.kdefVal) ui.kdefVal.textContent = String(K_DEF);
+  });
+}
 
+/* ---------- start fight ---------- */
 async function startFight() {
   if (!selectedEnemyId) return alert('Pick an enemy');
 
-  const level = Math.max(1, parseInt(ui.levelInput.value || '1', 10));
+  const level = Math.max(1, parseInt((ui.levelInput && ui.levelInput.value) || '1', 10));
   const catalog = await loadClassCatalog(selectedClass);
   const base = catalog.class?.baseStats || {};
   const starter = catalog.starter || {};
@@ -103,22 +117,25 @@ async function startFight() {
     atk: base.atk ?? 6, mag: base.mag ?? 6, def: base.def ?? 3, spd: base.spd ?? 4,
     gold: starter.gold ?? 0,
     inventory: Array.isArray(starter.inventory) ? starter.inventory.slice() : [],
-    resources: {}
+    resources: {},
+    classDef: catalog.class || null,
   };
-  player.classDef = catalog.class || null;
 
   const enemy = JSON.parse(JSON.stringify(enemies[selectedEnemyId]));
-
   const store = { _state: { player, scene: { name: 'battle', data: {} } }, get(){ return this._state; } };
-  ui.overlay.innerHTML = ''; ui.mount.innerHTML = '';
+
+  if (ui.overlay) ui.overlay.innerHTML = '';
+  if (ui.mount)   ui.mount.innerHTML = '';
+
   const sm = new SandboxSceneManager(ui.mount, ui.overlay);
-  sm._payload = { encounter: enemy, K_DEF };
+  sm._payload = { encounter: enemy, K_DEF }; // manager & scene will ignore K_DEF if unused
 
   const scene = new BattleScene(sm, store);
   await scene.onEnter();
   window.__scene = scene;
 }
 
+/* ---------- init ---------- */
 async function init() {
   try {
     await loadClassIndex();
@@ -127,9 +144,9 @@ async function init() {
     renderEnemyList();
   } catch (err) {
     console.error('[sandbox] init failed:', err);
-    ui.classList.innerHTML = 'Failed to load class index.';
-    ui.enemyList.innerHTML = 'Failed to load enemies.';
+    if (ui.classList) ui.classList.textContent = 'Failed to load class index.';
+    if (ui.enemyList) ui.enemyList.textContent = 'Failed to load enemies.';
   }
-  ui.fightBtn.addEventListener('click', startFight);
+  if (ui.fightBtn) ui.fightBtn.addEventListener('click', startFight);
 }
 init();

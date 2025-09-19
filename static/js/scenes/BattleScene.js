@@ -1,22 +1,14 @@
 // /static/js/scenes/BattleScene.js
 // -----------------------------------------------------------------------------
-// Battle Scene (vNext)
-// - Loads class kit (skills by level) from /static/catalog/classes/<classId>.json
-// - Accepts enemy payload (flattened) from sandbox/main, with raw AI data attached
-// - Renders portraits + HP/MP bars
-// - Enemy AI uses aiHints.openers → priority → fallback attack, with cooldowns & hitChance
-// - Damage math exposes a full debug breakdown (raw → mitigation → variance → crit → final)
-//   Toggle DEBUG below to silence logs in the UI once tuning is done.
-//
-// External data loaders:
-//   classLoader.js → loadClassCatalog, skillsAvailableAtLevel  :contentReference[oaicite:2]{index=2}
-// Enemy data format provided by your /static/catalog/enemies.json (raw)         :contentReference[oaicite:3]{index=3}
-//
+// Battle Scene (vNext - wired to CombatManager)
+// - Uses /static/js/systems/combatManager.js for ALL hit + damage math
+// - Adapts class catalogs & enemies.json into CombatManager via a small mapper
+// - Keeps your existing UI shell, removes noisy math dumps
 // -----------------------------------------------------------------------------
 
 import { loadClassCatalog, skillsAvailableAtLevel } from '/static/js/data/classLoader.js';
-import { initFromClass, syncCanonical, canSpend, spend, regenTurn } from '../systems/resourceManager.js';
-import { buildBattleDOM } from '../views/battleView.js';
+import { initFromClass, syncCanonical } from '../systems/resourceManager.js';
+import { resolveAttack, fromCatalog as normalizeFromCatalog } from '/static/js/systems/combatManager.js';
 
 export class BattleScene {
   constructor(sm, store) {
@@ -24,27 +16,20 @@ export class BattleScene {
     this.store = store;
 
     // UI refs
-    this.rootEl = null;
+    this.uiRoot = null;
+    this.hudEl = null;
+    this.actionBarEl = null;
+    this.logEl = null;
 
     // State
     this.player = null;
     this.enemy = null;
     this.actionBar = [];
     this.turnLock = false;
-    this.turn = 1;
     this._turn = 0;     // enemy turn counter
-    this._currentTarget = null;
-    this.logs = [];
 
-    // Tuning knobs (edit here or pass K_DEF in payload)
-    this.K_DEF = 12;          // mitigation soft-cap constant
-    this.VARIANCE_MIN = 0.90; // ±10% damage variance (lower bound)
-    this.VARIANCE_MAX = 1.10; // (upper bound)
-    this.CRIT_CHANCE = 0.10;  // 10% crit chance
-    this.CRIT_MULT = 1.50;    // 1.5x crit multiplier
-
-    // Debug logging to battle log (set to false when you’re done tuning)
-    this.DEBUG = true;
+    // Tuning
+    this.DEBUG = false; // silence math spam in UI
   }
 
   // ===========================================================================
@@ -53,64 +38,54 @@ export class BattleScene {
   async onEnter() {
     const state = this.store.get();
     this.player = state.player;
-    this.turnLock = false;
-    this.turn = 1;
-    this.logs = [];
-    this.actionBar = [];
-    this._turn = 0;
-    this._currentTarget = null;
+
+    // hydrate resources from class
+    initFromClass(this.player.classDef, this.player);
+    syncCanonical(this.player);
 
     const payload = this.sm.getPayload?.() || {};
-    if (typeof payload.K_DEF === 'number') this.K_DEF = payload.K_DEF;
-
-    const encounter = payload.encounter || {
+    this.enemy = payload.encounter || {
       id: 'slime', name: 'Gloomslick Slime', level: 1,
       hp: 24, atk: 5, mag: 0, def: 2, spd: 3
     };
-    this.enemy = { ...encounter };
 
+    // Ensure fixed max bars once per encounter
     if (typeof this.enemy.hpMax !== 'number') this.enemy.hpMax = this.enemy.hp ?? 0;
     if (typeof this.enemy.mpMax !== 'number') this.enemy.mpMax = this.enemy.mp ?? 0;
     if (typeof this.player.hpMax !== 'number') this.player.hpMax = this.player.hp ?? 0;
     if (typeof this.player.mpMax !== 'number') this.player.mpMax = this.player.mp ?? 0;
 
+    // Portraits
     const classId = (this.player.classId || 'warrior').toLowerCase();
-    let catalog = null;
-    try {
-      catalog = await loadClassCatalog(classId);
-      if (catalog?.class) {
-        this.player.classDef = catalog.class;
-      }
-    } catch (e) {
-      console.error('[BattleScene] class load failed:', e);
-    }
-
-    initFromClass(this.player.classDef, this.player);
-    syncCanonical(this.player);
-
     this.player.portrait = `/static/assets/art/classArt/${classId}.png`;
     if (!this.enemy.portrait && this.enemy._raw?.art?.portrait) {
       this.enemy.portrait = this.enemy._raw.art.portrait;
     }
 
+    // UI
     this._mountUI();
-    this.render();
-
+    this._renderHeader();
     this._log(`⚔️ A wild ${this.enemy.name} (Lv.${this.enemy.level}) appears!`);
-    this._dlog(`[init] K_DEF = ${this.K_DEF}`);
 
+    // Build player action kit
     const level = Math.max(1, this.player.level || 1);
-    const basics = this._buildBasicActions();
-    if (catalog) {
-      const kit = skillsAvailableAtLevel(catalog, level).map((sk) => this._normalizeAbility(sk));
+    try {
+      const catalog = await loadClassCatalog(classId);
+      const kit = skillsAvailableAtLevel(catalog, level);
+      const basics = [
+        { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] }
+      ];
       this.actionBar = [...basics, ...kit];
-      const className = catalog.class?.name || classId;
-      this._log(`Class loaded: ${className} (Lv.${level}). Actions ready.`);
-    } else {
-      this.actionBar = basics;
+      this._renderActionBar();
+      this._log(`Class loaded: ${(catalog.class?.name || classId)} (Lv.${level}). Actions ready.`);
+    } catch (e) {
+      console.error('[BattleScene] class load failed:', e);
       this._log('No class catalog found. Using basic actions.');
+      this.actionBar = [
+        { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] }
+      ];
+      this._renderActionBar();
     }
-    this.render();
   }
 
   onExit() {
@@ -119,8 +94,6 @@ export class BattleScene {
     this.enemy = null;
     this.actionBar = [];
     this.turnLock = false;
-    this.turn = 1;
-    this.logs = [];
     this._turn = 0;
   }
 
@@ -129,6 +102,7 @@ export class BattleScene {
   // ===========================================================================
   _mountUI() {
     const host = this.sm.overlay || document.body;
+
     const root = document.createElement('div');
     root.id = 'battle-ui';
     root.style.position = 'absolute';
@@ -143,205 +117,306 @@ export class BattleScene {
     root.style.color = '#dbe3f0';
     root.style.font = '14px/1.4 system-ui, sans-serif';
     root.style.pointerEvents = 'auto';
-    root.dataset.scene = 'battle';
 
+    const hud = document.createElement('div');
+    hud.id = 'battle-hud';
+    hud.style.display = 'flex';
+    hud.style.justifyContent = 'space-between';
+    hud.style.gap = '12px';
+    hud.style.marginBottom = '8px';
+
+    const bar = document.createElement('div');
+    bar.id = 'battle-actions';
+    bar.style.display = 'flex';
+    bar.style.flexWrap = 'wrap';
+    bar.style.gap = '8px';
+    bar.style.marginTop = '8px';
+    bar.style.marginBottom = '8px';
+
+    const log = document.createElement('div');
+    log.id = 'battle-log';
+    log.style.maxHeight = '200px';
+    log.style.overflow = 'auto';
+    log.style.padding = '8px';
+    log.style.background = 'rgba(0,0,0,0.25)';
+    log.style.borderRadius = '8px';
+    log.style.border = '1px solid rgba(255,255,255,0.06)';
+
+    root.append(hud, bar, log);
     host.appendChild(root);
-    this.rootEl = root;
+
+    this.uiRoot = root;
+    this.hudEl = hud;
+    this.actionBarEl = bar;
+    this.logEl = log;
   }
 
   _unmountUI() {
-    if (this.rootEl && this.rootEl.parentNode) {
-      this.rootEl.parentNode.removeChild(this.rootEl);
+    if (this.uiRoot && this.uiRoot.parentNode) this.uiRoot.parentNode.removeChild(this.uiRoot);
+    this.uiRoot = this.hudEl = this.actionBarEl = this.logEl = null;
+  }
+
+  _mkPortrait(src) {
+    const box = document.createElement('div');
+    box.style.width = '40px';
+    box.style.height = '40px';
+    box.style.flex = '0 0 40px';
+    box.style.borderRadius = '8px';
+    box.style.overflow = 'hidden';
+    box.style.border = '1px solid rgba(255,255,255,0.10)';
+    box.style.background = 'rgba(255,255,255,0.06)';
+    if (src) {
+      const img = document.createElement('img');
+      img.src = src; img.alt = '';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+      box.appendChild(img);
     }
-    this.rootEl = null;
+    return box;
   }
 
-  render() {
-    if (!this.rootEl) return;
-    syncCanonical(this.player);
-    syncCanonical(this.enemy);
-    const logs = this.logs.slice(-60);
-    const locked = this.turnLock;
-    const abilities = this.actionBar.map((ability) => ({
-      id: ability.id,
-      name: ability.name,
-      disabled: locked || !this.canUseAbility(ability),
-      resource: ability.resource,
-      cost: ability.cost ?? 0,
-      costLabel: this._formatAbilityCost(ability),
-    }));
+  _mkBar(label, curr, max, opts = {}) {
+    const pct = Math.max(0, Math.min(1, max > 0 ? (curr / max) : 0));
+    const wrap = document.createElement('div');
+    wrap.style.margin = '4px 0';
 
-    buildBattleDOM({
-      root: this.rootEl,
-      state: {
-        player: this.player,
-        enemy: this.enemy,
-        turn: this.turn,
-        logs,
-        abilities,
-        isLocked: locked,
-      },
-      handlers: {
-        onAbility: (abilityId) => this.useAbility(abilityId),
-        onEndTurn: () => this.endTurn(),
-        onSelectTarget: () => {},
-      }
-    });
-  }
+    const head = document.createElement('div');
+    head.style.display = 'flex';
+    head.style.justifyContent = 'space-between';
+    head.style.fontSize = '12px';
+    head.style.opacity = '0.85';
+    head.innerHTML = `<span>${label}</span><span>${Math.max(0,Math.round(curr))} / ${Math.round(max || 0)}</span>`;
 
-  _buildBasicActions() {
-    const basics = [
-      { id:'basic_attack', name:'Attack', type:'attack', target:'enemy', effects:[{ kind:'damage', formula:'atk*0.8' }] },
-      { id:'defend',       name:'Defend', type:'buff',   target:'self',  effects:[{ kind:'buff', stat:'def', amount:2, duration:1 }] }
-    ];
-    return basics.map((skill) => this._normalizeAbility(skill));
-  }
+    const bar = document.createElement('div');
+    bar.style.position = 'relative';
+    bar.style.height = '10px';
+    bar.style.borderRadius = '6px';
+    bar.style.background = 'rgba(255,255,255,0.07)';
+    bar.style.overflow = 'hidden';
+    bar.style.border = '1px solid rgba(255,255,255,0.08)';
 
-  _normalizeAbility(raw) {
-    const clone = { ...raw };
-    const cost = clone.cost;
-    let resource = clone.resource || null;
-    let amount = 0;
-    let costMap = null;
+    const fill = document.createElement('div');
+    fill.style.height = '100%';
+    fill.style.width = `${pct * 100}%`;
+    fill.style.transition = 'width 200ms ease';
+    fill.style.background = opts.color || 'linear-gradient(90deg, #ff4d6d, #ff936a)';
+    bar.appendChild(fill);
 
-    if (typeof cost === 'number') {
-      amount = Number(cost) || 0;
-    } else if (cost && typeof cost === 'object') {
-      costMap = {};
-      for (const [key, val] of Object.entries(cost)) {
-        costMap[key] = Number(val) || 0;
-      }
-      const entries = Object.entries(costMap);
-      if (entries.length) {
-        if (!resource) resource = entries[0][0];
-        const found = entries.find(([key]) => key === resource) || entries[0];
-        amount = found[1];
-      }
+    if (opts.shield && opts.shield > 0) {
+      const total = (max || 0) + opts.shield;
+      const shieldPct = Math.max(0, Math.min(1, total > 0 ? (Math.max(curr,0) + opts.shield) / total : 0));
+      const shieldBar = document.createElement('div');
+      shieldBar.style.position = 'absolute';
+      shieldBar.style.right = '0';
+      shieldBar.style.top = '0';
+      shieldBar.style.bottom = '0';
+      shieldBar.style.width = `${Math.max(0, (shieldPct - pct) * 100)}%`;
+      shieldBar.style.background = 'linear-gradient(90deg, rgba(135,206,250,0.6), rgba(176,224,230,0.6))';
+      bar.appendChild(shieldBar);
     }
 
-    clone.cost = amount;
-    clone.resource = resource || clone.resource || 'mana';
-    if (costMap) clone.costMap = costMap;
-    return clone;
+    wrap.append(head, bar);
+    return wrap;
   }
 
-  _getAbilityCosts(ability) {
-    if (!ability) return [];
-    if (ability.costMap && typeof ability.costMap === 'object') {
-      return Object.entries(ability.costMap)
-        .filter(([, amt]) => (Number(amt) || 0) > 0)
-        .map(([resource, amt]) => ({ resource, amount: Number(amt) || 0 }));
+  _mkUnitCard(title, unit, extra = '') {
+    const card = document.createElement('div');
+    card.style.flex = '1';
+    card.style.padding = '8px';
+    card.style.background = 'rgba(255,255,255,0.04)';
+    card.style.borderRadius = '8px';
+    card.style.border = '1px solid rgba(255,255,255,0.06)';
+
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.gap = '8px';
+    headerRow.style.marginBottom = '6px';
+    const head = document.createElement('div');
+    head.style.fontWeight = '600';
+    head.textContent = `${title}${extra ? ` — ${extra}` : ''}`;
+    headerRow.append(this._mkPortrait(unit.portrait), head);
+    card.appendChild(headerRow);
+
+    card.appendChild(this._mkBar('HP', unit.hp ?? 0, unit.hpMax ?? (unit.hp ?? 0), { shield: unit._shield || 0 }));
+    const mpMax = unit.mpMax ?? 0;
+    if (mpMax > 0) {
+      card.appendChild(this._mkBar('MP', unit.mp ?? 0, mpMax, { color: 'linear-gradient(90deg, #4d7cff, #80b3ff)' }));
     }
-    const amt = Number(ability.cost ?? 0);
-    if (amt <= 0) return [];
-    return [{ resource: ability.resource || 'mana', amount: amt }];
+    return card;
   }
 
-  _formatAbilityCost(ability) {
-    const parts = this._getAbilityCosts(ability).map(({ resource, amount }) => {
-      const label = this._resourceLabel(resource);
-      return `${amount} ${label}`;
-    });
-    return parts.join(' / ');
+  _renderHeader() {
+    const hud = this.hudEl;
+    hud.innerHTML = '';
+
+    const p = this.player, e = this.enemy;
+    const pTitle = `🧙 ${p.name || (p.classId ? p.classId[0].toUpperCase()+p.classId.slice(1) : 'Adventurer')}`;
+    const eTitle = `👾 ${e.name}`;
+    const pExtra = `Class: ${p.classId ?? 'warrior'}`;
+    const eExtra = `Lv.${e.level}`;
+
+    hud.append(
+      this._mkUnitCard(pTitle, p, pExtra),
+      this._mkUnitCard(eTitle,  e, eExtra)
+    );
   }
 
-  _resourceLabel(resource) {
-    const res = this.player?.resources?.[resource];
-    if (res && typeof res === 'object' && res.label) return res.label;
-    return resource;
-  }
-
-  canUseAbility(ability) {
-    const costs = this._getAbilityCosts(ability);
-    if (!costs.length) return true;
-    return costs.every(({ resource, amount }) => canSpend(this.player, resource, amount));
-  }
-
-  _spendAbilityCost(ability) {
-    const costs = this._getAbilityCosts(ability);
-    for (const { resource, amount } of costs) {
-      if (amount > 0) spend(this.player, resource, amount);
+  _renderActionBar() {
+    this.actionBarEl.innerHTML = '';
+    for (const sk of this.actionBar) {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = sk.name;
+      btn.style.minWidth = '96px';
+      btn.onclick = () => this.useSkill(sk);
+      this.actionBarEl.appendChild(btn);
     }
   }
 
   _log(t) {
-    const line = String(t);
-    if (!this.rootEl) console.log('[battle]', line);
-    this.logs.push(line);
-    if (this.logs.length > 200) this.logs.splice(0, this.logs.length - 200);
-    if (this.rootEl) this.render();
-  }
-  _dlog(line){ if (this.DEBUG){ this._log(line); console.debug(line); } }
-  _dlogBlock(title, obj){
-    if (!this.DEBUG) return;
-    const pretty = JSON.stringify(obj, null, 2);
-    this._log(`[math] ${title}`);
-    for (const ln of pretty.split('\n')) this._log('  ' + ln);
-    console.debug(`[math] ${title}`, obj);
+    if (!this.logEl) return console.log('[battle]', t);
+    const d = document.createElement('div');
+    d.textContent = t;
+    this.logEl.appendChild(d);
+    this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
   // ===========================================================================
   // Player turn
   // ===========================================================================
-  async useAbility(abilityId) {
+  async useSkill(skill) {
     if (this.turnLock) return;
-    const ability = this.actionBar.find((a) => a.id === abilityId);
-    if (!ability) return;
-    if (!this.canUseAbility(ability)) {
-      const firstCost = this._getAbilityCosts(ability)[0];
-      const label = firstCost
-        ? `${firstCost.amount} ${this._resourceLabel(firstCost.resource)}`
-        : 'resources';
-      this._log(`Not enough ${label} to use ${ability.name}.`);
-      return;
-    }
-
     this.turnLock = true;
 
-    const p = this.player;
-    const e = this.enemy;
+    const p = this.player, e = this.enemy;
 
-    this._spendAbilityCost(ability);
-    this.render();
-
-    this._log(`${p.name} uses ${ability.name}!`);
-    await this._applySkillEffects(p, e, ability);
-
-    if (e.hp <= 0) {
-      this.render();
-      this._log(`🏆 ${e.name} is defeated!`);
-      this.turnLock = false;
-      return;
+    // Pay non-MP costs (handled here; CombatManager only reads MP)
+    if (skill.cost) {
+      if (!p.resources) p.resources = {};
+      for (const [res, amt] of Object.entries(skill.cost)) {
+        const have = p.resources[res] ?? 0;
+        if (have < amt) { this._log(`Not enough ${res} to use ${skill.name}.`); this.turnLock = false; return; }
+      }
+      for (const [res, amt] of Object.entries(skill.cost)) {
+        p.resources[res] = (p.resources[res] ?? 0) - amt;
+      }
     }
 
-    this.render();
+    this._log(`${p.name} uses ${skill.name}!`);
+
+    // Build a CombatManager ability from this skill
+    const ability = this._abilityFromSkill(p, skill);
+
+    // Resolve attack (hit + damage); healing/shields handled inline without manager
+    if (ability) {
+      const result = resolveAttack({
+        attacker: p,
+        defender: e,
+        ability,
+        options: { normalizeActor: normalizeFromCatalog, devDiagnostics: this.DEBUG }
+      });
+      if (result.ok && result.hit) {
+        e.hp = Math.max(0, (e.hp ?? 0) - result.totals.damage);
+        this._log(`${e.name} takes ${result.totals.damage} damage.`);
+      } else if (result.ok && !result.hit) {
+        this._log(`${p.name}'s attack misses!`);
+      } else if (!result.ok) {
+        this._log(`Cannot use ${skill.name}: ${result.reason}`);
+      }
+    } else {
+      // Non-damaging effect resolution (heal/shield/buff)
+      await this._applyNonDamageEffect(p, e, skill);
+    }
+
+    if (e.hp <= 0) { this._renderHeader(); this._log(`🏆 ${e.name} is defeated!`); this.turnLock = false; return; }
+
+    this._renderHeader();
     await this._sleep(400);
     await this._enemyTurn();
-
-    if (this.player?.hp > 0) {
-      regenTurn(this.player);
-      this.turn += 1;
-    }
+    this._renderHeader();
     this.turnLock = false;
-    this.render();
   }
 
-  async endTurn() {
-    if (this.turnLock) return;
-    this.turnLock = true;
-    this._log(`${this.player.name} ends their turn.`);
-    this.render();
-    await this._enemyTurn();
-    if (this.player?.hp > 0) {
-      regenTurn(this.player);
-      this.turn += 1;
+  // Convert our skill JSON into a CombatManager ability (or null if non-damaging)
+  _abilityFromSkill(attacker, skill) {
+    const effects = skill.effects || [];
+    const dmg = effects.find(fx => fx.kind === 'damage');
+    const dmgRoll = effects.find(fx => fx.kind === 'damage_roll');
+
+    if (!dmg && !dmgRoll) return null;
+
+    // Determine damage track (physical vs magic) + scaled value
+    let scaled = 0;
+    let track = 'physical';
+    if (dmg && typeof dmg.formula === 'string') {
+      const ctx = this._ctxFor(attacker);
+      scaled = this._evalFormula(dmg.formula, ctx);
+      track = dmg.formula.includes('mag') ? 'magic' : 'physical';
+    } else if (dmgRoll) {
+      const base = this._randInt(dmgRoll.min ?? 1, dmgRoll.max ?? 3);
+      const atkScale = (dmgRoll.scaling?.atk ? (attacker.atk ?? 0) * (dmgRoll.scaling.atk || 0) : 0);
+      const magScale = (dmgRoll.scaling?.mag ? (attacker.mag ?? 0) * (dmgRoll.scaling.mag || 0) : 0);
+      scaled = base + atkScale + magScale;
+      track = (magScale > atkScale) ? 'magic' : 'physical';
     }
-    this.turnLock = false;
-    this.render();
+
+    // Map to manager model: raw = base(0) + stat + powerBonus - defense = scaled - defense
+    const base = 0;
+    const stat = (track === 'magic') ? (attacker.mag ?? 0) : (attacker.atk ?? 0);
+    const powerBonus = scaled - stat;
+
+    // Element from tags (e.g., ['elemental','fire'])
+    let element = null;
+    if (Array.isArray(skill.tags)) {
+      if (skill.tags.includes('fire')) element = 'fire';
+      else if (skill.tags.includes('frost')) element = 'frost';
+      else if (skill.tags.includes('lightning')) element = 'lightning';
+      else if (skill.tags.includes('poison')) element = 'poison';
+    }
+
+    return {
+      name: skill.name,
+      type: (track === 'magic') ? 'magic' : 'physical',
+      base,
+      variance: 0,
+      powerBonus,
+      element
+    };
+  }
+
+  async _applyNonDamageEffect(source, target, skill) {
+    for (const fx of (skill.effects || [])) {
+      switch (fx.kind) {
+        case 'heal': {
+          const amount = Math.max(1, Math.round(fx.amount ?? 5));
+          const before = source.hp ?? 0;
+          const max = (source.hpMax ?? before);
+          source.hp = Math.min(max, before + amount);
+          this._log(`${source.name} recovers ${amount} HP.`);
+          break;
+        }
+        case 'shield': {
+          source._shield = (source._shield ?? 0) + (fx.amount ?? 5);
+          this._log(`${source.name} gains a shield (${fx.amount ?? 5}).`);
+          break;
+        }
+        case 'buff': {
+          const stat = fx.stat; const amt = Number(fx.amount || 0);
+          source[stat] = (source[stat] ?? 0) + amt;
+          this._log(`${source.name}'s ${stat} ${(amt >= 0 ? 'rises' : 'drops')} by ${Math.abs(amt)}.`);
+          break;
+        }
+        case 'root': { this._log(`${target.name} is rooted in place.`); break; }
+        case 'vuln': { target._vuln = Math.max(0, (target._vuln || 0) + (fx.amount ?? 0)); this._log(`${target.name} is exposed.`); break; }
+        default: break;
+      }
+    }
   }
 
   // ===========================================================================
-  // Enemy AI (openers → priority → any attack → fallback)
+  // Enemy AI (kept simple; all attacks go through CombatManager)
   // ===========================================================================
   async _enemyTurn() {
     const e = this.enemy, p = this.player;
@@ -349,7 +424,6 @@ export class BattleScene {
 
     if (!this._turn) this._turn = 1;
     if (!e._cds) e._cds = {};
-    // tick cooldowns
     for (const k of Object.keys(e._cds)) e._cds[k] = Math.max(0, (e._cds[k] || 0) - 1);
 
     const raw = e._raw;
@@ -363,42 +437,50 @@ export class BattleScene {
 
     let skill = null;
 
-    // 1) openers on first turn
     if (this._turn === 1 && Array.isArray(hints.openers)) {
       const first = hints.openers.find(isUsable);
       if (first) skill = this._mkEnemySkill(first, skills[first]);
     }
-    // 2) priority thereafter
     if (!skill && Array.isArray(hints.priority)) {
       const prio = hints.priority.find(isUsable);
       if (prio) skill = this._mkEnemySkill(prio, skills[prio]);
     }
-    // 3) any usable attack
     if (!skill) {
       const anyAtk = Object.entries(skills).find(([id, def]) => def?.type === 'attack' && isUsable(id));
       if (anyAtk) skill = this._mkEnemySkill(anyAtk[0], anyAtk[1]);
     }
-    // 4) fallback swing
     if (!skill) {
-      skill = { id:'enemy_attack', name:'Enemy Attack', type:'attack', target:'enemy', hitChance:1,
-                effects:[{ kind:'damage', formula:'atk*0.9' }] };
+      skill = { id:'enemy_attack', name:'Enemy Attack', type:'attack', target:'enemy',
+                effects:[{ kind:'damage_roll', min:1, max:3, scaling:{ atk:1 } }] };
     }
 
-    // Hit roll
-    const evasionPct = p._evasionPct || 0;
-    const baseHit = (typeof skill.hitChance === 'number' ? skill.hitChance : 1);
-    const finalHit = Math.max(0, Math.min(1, baseHit * (1 - evasionPct/100)));
-    this._dlogBlock(`${e.name} hit roll`, { baseHit, evasionPct, finalHit });
-    if (Math.random() > finalHit) { this._log(`${e.name} uses ${skill.name}! (miss)`); this._turn++; return; }
-
     this._log(`${e.name} uses ${skill.name}!`);
-    await this._applySkillEffects(e, p, skill);
+
+    // Build ability from enemy skill and resolve via manager
+    const ability = this._abilityFromEnemySkill(e, skill);
+    if (ability) {
+      const result = resolveAttack({
+        attacker: e,
+        defender: p,
+        ability,
+        options: { normalizeActor: normalizeFromCatalog, devDiagnostics: this.DEBUG }
+      });
+      if (result.ok && result.hit) {
+        p.hp = Math.max(0, (p.hp ?? 0) - result.totals.damage);
+        this._log(`${p.name} takes ${result.totals.damage} damage.`);
+      } else if (result.ok && !result.hit) {
+        this._log(`${e.name}'s attack misses!`);
+      }
+    } else {
+      // non-damage (buffs, shields, heals)
+      await this._applyNonDamageEffect(e, p, skill);
+    }
 
     // start cooldown if defined
     const rawDef = skills[skill.id];
     if (rawDef && typeof rawDef.cooldown === 'number') e._cds[skill.id] = rawDef.cooldown;
 
-    if (p.hp <= 0) { this.render(); this._log(`💀 ${p.name} has fallen...`); }
+    if (p.hp <= 0) { this._renderHeader(); this._log(`💀 ${p.name} has fallen...`); }
     this._turn++;
   }
 
@@ -408,170 +490,51 @@ export class BattleScene {
       name: def?.name || id,
       type: def?.type || 'attack',
       target: def?.target || 'enemy',
-      hitChance: (typeof def?.hitChance === 'number' ? def.hitChance : 1),
-      effects: this._adaptEnemyEffects(def?.effects || [])
+      effects: (def?.effects || []).map(e => ({ ...e }))
     };
   }
 
-  _adaptEnemyEffects(effects) {
-    // Enemy effect kinds already line up with our interpreter (damage_roll, buff, shield, heal, root, evasion, vuln).
-    return effects.map(e => ({ ...e }));
-  }
-
-  // ===========================================================================
-  // Effects Interpreter
-  // ===========================================================================
-  async _applySkillEffects(source, target, skill) {
+  _abilityFromEnemySkill(attacker, skill) {
     const effects = skill.effects || [];
-    for (const fx of effects) {
-      switch (fx.kind) {
-        case 'damage': {
-          const raw = this._evalFormula(fx.formula || 'atk*1', this._ctxFor(source));
-          this._currentTarget = target;
-          const math = this._calcDamage(raw, target);
-          this._currentTarget = null;
-          this._dlogBlock(`${source.name} → ${target.name} | ${skill.name}`, {
-            raw: math.inputs.raw, def: math.inputs.targetDef, vuln: math.inputs.vuln, K_DEF: math.inputs.K_DEF,
-            mult: math.mitigation.mult, afterMit: math.mitigation.afterMit,
-            varianceFactor: math.variance.varFactor, afterVariance: math.variance.afterVar,
-            crit: math.crit.didCrit, final: math.result.final
-          });
-          this._applyDamage(target, math.result.final, skill);
-          break;
-        }
-        case 'damage_roll': {
-          const base = this._randInt(fx.min ?? 1, fx.max ?? 3);
-          const scale = (fx.scaling?.atk ? (source.atk ?? 0) * (fx.scaling.atk || 0) : 0)
-                      + (fx.scaling?.mag ? (source.mag ?? 0) * (fx.scaling.mag || 0) : 0);
-          const raw = base + scale;
-          this._currentTarget = target;
-          const math = this._calcDamage(raw, target);
-          this._currentTarget = null;
-          this._dlogBlock(`${source.name} → ${target.name} | ${skill.name}`, {
-            baseRoll: base, scale, raw,
-            def: math.inputs.targetDef, vuln: math.inputs.vuln, K_DEF: math.inputs.K_DEF,
-            mult: math.mitigation.mult, afterMit: math.mitigation.afterMit,
-            varianceFactor: math.variance.varFactor, afterVariance: math.variance.afterVar,
-            crit: math.crit.didCrit, final: math.result.final
-          });
-          this._applyDamage(target, math.result.final, skill);
-          break;
-        }
-        case 'heal': {
-          const amount = Math.max(1, Math.round(fx.amount ?? 5));
-          this._healTarget(source === target ? source : target, amount, skill);
-          break;
-        }
-        case 'buff': {
-          this._applyBuff(source === target ? source : (fx.target === 'self' ? source : target),
-                          fx.stat, fx.amount ?? 1, fx.duration ?? 1);
-          break;
-        }
-        case 'shield': {
-          this._applyShield(source === target ? source : (fx.target === 'self' ? source : target),
-                            fx.amount ?? 5, fx.duration ?? 1);
-          break;
-        }
-        case 'evasion': { // { amountPct, duration }
-          const add = Number(fx.amountPct || 0);
-          source._evasionPct = Math.max(0, (source._evasionPct || 0) + add);
-          this._log(`${source.name} becomes evasive (+${add}% evasion).`);
-          break;
-        }
-        case 'vuln': { // { amount, duration } → reduce DEF for mitigation
-          const amt = Number(fx.amount || 0);
-          target._vuln = Math.max(0, (target._vuln || 0) + amt);
-          this._log(`${target.name} is exposed (-${amt} DEF).`);
-          break;
-        }
-        case 'root': { this._log(`${target.name} is rooted in place.`); break; }
-        case 'slow': { target.spd = Math.max(0, (target.spd ?? 0) - (fx.amount ?? 1)); this._log(`${target.name} is slowed.`); break; }
-        case 'taunt': { this._log(`${source.name} taunts ${target.name}!`); break; }
-        case 'dot': { this._log(`${target.name} suffers a lingering effect.`); break; }
-        default: {
-          this._log(`(effect ${fx.kind} not implemented)`);
-        }
-      }
-      this.render();
-      await this._sleep(10);
+    const dmg = effects.find(fx => fx.kind === 'damage');
+    const dmgRoll = effects.find(fx => fx.kind === 'damage_roll');
+    if (!dmg && !dmgRoll) return null;
+
+    let scaled = 0;
+    let track = 'physical';
+    if (dmg && typeof dmg.formula === 'string') {
+      const ctx = this._ctxFor(attacker);
+      scaled = this._evalFormula(dmg.formula, ctx);
+      track = dmg.formula.includes('mag') ? 'magic' : 'physical';
+    } else if (dmgRoll) {
+      const base = this._randInt(dmgRoll.min ?? 1, dmgRoll.max ?? 3);
+      const atkScale = (dmgRoll.scaling?.atk ? (attacker.atk ?? 0) * (dmgRoll.scaling.atk || 0) : 0);
+      const magScale = (dmgRoll.scaling?.mag ? (attacker.mag ?? 0) * (dmgRoll.scaling.mag || 0) : 0);
+      scaled = base + atkScale + magScale;
+      track = (magScale > atkScale) ? 'magic' : 'physical';
     }
+
+    const base = 0;
+    const stat = (track === 'magic') ? (attacker.mag ?? 0) : (attacker.atk ?? 0);
+    const powerBonus = scaled - stat;
+
+    return {
+      name: skill.name,
+      type: (track === 'magic') ? 'magic' : 'physical',
+      base,
+      variance: 0,
+      powerBonus
+    };
   }
 
   // ===========================================================================
-  // Math
+  // Math helpers (safe eval; small sandbox)
   // ===========================================================================
   _evalFormula(expr, ctx) {
     try { return Function(...Object.keys(ctx), `return ${expr};`)(...Object.values(ctx)); }
     catch { return 0; }
   }
-
   _ctxFor(u) { return { atk: u.atk ?? 6, mag: u.mag ?? 6, def: u.def ?? 0, spd: u.spd ?? 0, level: u.level ?? 1 }; }
-
-  _calcDamage(raw, target) {
-    const baseDef = Number(target.def || 0);
-    const vuln    = Number(target._vuln || 0);
-    const defEff  = Math.max(0, baseDef - vuln);
-
-    const k = this.K_DEF;
-    const mult = k / (defEff + k);
-    const afterMit = Math.max(0, raw * mult);
-
-    const varFactor = this._rand(this.VARIANCE_MIN, this.VARIANCE_MAX);
-    let afterVar = afterMit * varFactor;
-
-    let didCrit = false;
-    if (Math.random() < this.CRIT_CHANCE) { afterVar *= this.CRIT_MULT; didCrit = true; }
-
-    const final = Math.max(1, Math.round(afterVar));
-
-    return {
-      inputs: { raw, targetDef: baseDef, vuln, K_DEF: k },
-      mitigation: { mult, afterMit: Number(afterMit.toFixed(3)) },
-      variance: { varFactor: Number(varFactor.toFixed(3)), afterVar: Number(afterVar.toFixed(3)) },
-      crit: { didCrit, critMult: this.CRIT_MULT },
-      result: { final }
-    };
-  }
-
-  // ===========================================================================
-  // Stat application
-  // ===========================================================================
-  _applyDamage(target, amount) {
-    if (target._shield && target._shield > 0) {
-      const absorbed = Math.min(target._shield, amount);
-      target._shield -= absorbed;
-      amount -= absorbed;
-      if (absorbed > 0) this._log(`${target.name} absorbs ${absorbed} with a shield.`);
-    }
-    if (amount > 0) {
-      const before = target.hp ?? 0;
-      target.hp = Math.max(0, before - amount);
-      const after = target.hp;
-      this._log(`${target.name} takes ${amount} damage.`);
-      this._dlogBlock(`HP change (${target.name})`, { before, amount, after, hpMax: target.hpMax ?? before });
-    }
-    this.render();
-  }
-
-  _healTarget(target, amount) {
-    const before = target.hp ?? 0;
-    const max = (target.hpMax ?? before);
-    target.hp = Math.min(max, before + amount);
-    const after = target.hp;
-    this._log(`${target.name} recovers ${amount} HP.`);
-    this._dlogBlock(`HP change (${target.name})`, { before, amount:-amount, after, hpMax: target.hpMax ?? before });
-    this.render();
-  }
-
-  _applyBuff(target, stat, amount) {
-    target[stat] = (target[stat] ?? 0) + (amount ?? 0);
-    this._log(`${target.name}'s ${stat} ${(amount >= 0 ? 'rises' : 'drops')} by ${Math.abs(amount)}.`);
-  }
-
-  _applyShield(target, amount) {
-    target._shield = (target._shield ?? 0) + (amount ?? 0);
-    this._log(`${target.name} gains a shield (${amount}).`);
-  }
 
   // ===========================================================================
   // Utilities
@@ -580,3 +543,4 @@ export class BattleScene {
   _rand(min, max) { return min + Math.random() * (max - min); }
   _randInt(min, max) { return Math.floor(this._rand(min, max + 1)); }
 }
+

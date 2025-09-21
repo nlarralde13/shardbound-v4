@@ -1,0 +1,28 @@
+{
+  "id": "goblin_hunter",
+  "name": "Goblin Hunter",
+  "family": "goblins",
+  "faction": "goblin_tribes",
+  "classArchetype": "ranger",
+  "tags": ["goblin", "ranged"],
+  "levelRange": [1, 6],
+
+  "stats": {
+    "ACC": 6, "EVA": 5,
+    "ATK": 6, "DEF": 2,
+    "MAG": 2, "MRES": 3,
+    "DEX": 5, "STR": 5, "INT": 3, "WIS": 3,
+    "MP": 0
+  },
+  "resources": { "mp": 0 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
+  "baseStats": { "hp": 22, "atk": 6, "mag": 2, "def": 2, "spd": 5, "armor": 0 },
+  "aiHints": { "style": "ranged_dps", "openers": ["aimed_shot"], "priority": ["snare", "aimed_shot"] },
+  "skills": {
+    "aimed_shot": { "name": "Aimed Shot", "type": "attack", "target": "enemy", "hitChance": 0.9, "cooldown": 0,
+      "effects": [{ "kind": "damage_roll", "min": 2, "max": 5, "scaling": { "atk": 1 } }] },
+    "snare": { "name": "Snare", "type": "control", "target": "enemy", "cooldown": 3,
+      "effects": [{ "kind": "root", "duration": 1 }] }
+  }
+}

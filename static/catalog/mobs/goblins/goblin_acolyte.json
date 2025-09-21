@@ -1,0 +1,57 @@
+{
+  "id": "goblin_acolyte",
+  "name": "Goblin Acolyte",
+  "family": "goblins",
+  "faction": "goblin_tribes",
+  "classArchetype": "cleric",
+  "tags": ["goblin", "support"],
+  "levelRange": [1, 6],
+
+  "stats": {
+    "ACC": 4,
+    "EVA": 4,
+    "ATK": 3,
+    "DEF": 3,
+    "MAG": 6,
+    "MRES": 4,
+    "DEX": 4,
+    "STR": 3,
+    "INT": 6,
+    "WIS": 5,
+    "MP": 8
+  },
+  "resources": { "mp": 8 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
+  "baseStats": { "hp": 22, "atk": 3, "mag": 6, "def": 3, "spd": 4, "armor": 0 },
+
+  "aiHints": {
+    "style": "healer",
+    "openers": ["smite"],
+    "priority": ["minor_heal", "aegis", "smite"]
+  },
+  "skills": {
+    "smite": {
+      "name": "Smite",
+      "type": "attack",
+      "target": "enemy",
+      "hitChance": 0.95,
+      "cooldown": 0,
+      "effects": [{ "kind": "damage_roll", "min": 2, "max": 4, "scaling": { "mag": 1 } }]
+    },
+    "minor_heal": {
+      "name": "Minor Heal",
+      "type": "heal",
+      "target": "ally",
+      "cooldown": 1,
+      "effects": [{ "kind": "heal", "amount": 6 }]
+    },
+    "aegis": {
+      "name": "Aegis",
+      "type": "shield",
+      "target": "ally",
+      "cooldown": 3,
+      "effects": [{ "kind": "shield", "amount": 6, "duration": 2 }]
+    }
+  }
+}

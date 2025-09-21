@@ -1,21 +1,34 @@
 {
   "meta": { "version": "0.1" },
+  "name": "Mage",
+  "stats": {
+    "ACC": 5,
+    "EVA": 5,
+    "ATK": 3,
+    "DEF": 3,
+    "MAG": 8,
+    "MRES": 4,
+    "DEX": 5,
+    "STR": 3,
+    "INT": 8,
+    "WIS": 6,
+    "MP": 18
+  },
+  "resources": { "mp": 18 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
   "class": {
     "id": "mage",
     "name": "Mage",
     "archetype": ["caster", "dps"],
     "resources": ["mana"],
     "resourceDefinitions": {
-      "mana": {
-        "label": "Mana",
-        "maxFromStat": "mpMax",
-        "start": "full",
-        "regenPerTurn": 3
-      }
+      "mana": { "label": "Mana", "maxFromStat": "mpMax", "start": "full", "regenPerTurn": 3 }
     },
     "baseStats": { "hp": 26, "mp": 18, "atk": 3, "mag": 8, "def": 3, "spd": 5 },
     "progression": { "maxLevel": 20, "perLevel": { "hp": 3, "mp": 4, "mag": 2, "atk": 0, "def": 1, "spd": 1 } }
   },
+
   "skills": {
     "fireball": {
       "name": "Fireball",
@@ -51,11 +64,11 @@
   },
 
   "starter": {
-      "gold": 25,
-      "inventory": [
-        { "id": "potion", "name": "Health Potion", "qty": 2 },
-        { "id": "wood", "qty": 5 },
-        { "id": "ore",  "qty": 3 }
-      ]
-    }
+    "gold": 25,
+    "inventory": [
+      { "id": "potion", "name": "Health Potion", "qty": 2 },
+      { "id": "wood", "qty": 5 },
+      { "id": "ore", "qty": 3 }
+    ]
+  }
 }

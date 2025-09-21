@@ -4,70 +4,109 @@
   <meta charset="utf-8" />
   <title>Battle Box</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body { margin:0; background:#0a0e14; color:#dbe3f0; font:14px/1.4 system-ui,sans-serif; }
-    .wrap { display:grid; grid-template-columns: 240px 1fr 240px; gap:12px; padding:12px; height:100vh; box-sizing:border-box; }
-    .panel { background:#0f1420; border:1px solid #2a3242; border-radius:12px; padding:10px; overflow:auto; }
-    h2 { margin:0 0 8px 0; font-size:14px; letter-spacing:.2px; color:#b9c3d5; }
-    .list { display:flex; flex-direction:column; gap:6px; }
-    .list button { text-align:left; background:#141b2a; color:#dbe3f0; border:1px solid #2a3242; border-radius:8px; padding:8px; cursor:pointer; }
-    .list button.active { outline:2px solid #5aa2ff; }
-    .controls { display:flex; gap:8px; align-items:center; margin-top:8px; }
-    .center { position:relative; }
-    #sceneOverlay { position:absolute; inset:0; pointer-events:none; }
-    .kv { display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.06); }
-    .row { display:flex; gap:8px; flex-wrap:wrap; }
-    input[type=number] { width:64px; background:#141b2a; border:1px solid #2a3242; color:#dbe3f0; border-radius:6px; padding:4px; }
-    .footer { color:#8b95a7; font-size:12px; margin-top:8px; }
-  </style>
+  <link rel="stylesheet" href="/static/css/battlebox.css">
 </head>
 <body>
   <div class="wrap">
-    <div class="panel">
+    <!-- LEFT: class + basic controls -->
+    <aside class="panel" id="leftPanel">
       <h2>Player Class</h2>
       <div class="list" id="classList"></div>
+
       <div class="controls">
-        <label>Level <input type="number" id="levelInput" min="1" value="1"></label>
+        <label class="kv">
+          <span>Level</span>
+          <input type="number" id="levelInput" min="1" value="1">
+        </label>
       </div>
+
       <div class="controls">
-        <button id="fightBtn">Fight ▶</button>
+        <button id="fightBtn" class="btn primary">Fight ▶</button>
       </div>
+
       <div class="footer">Uses class catalogs from <code>/static/catalog/classes</code>.</div>
-    </div>
+    </aside>
 
-    <div class="panel center">
-  <h2>Battle Viewer</h2>
+    <!-- CENTER: viewer + background picker -->
+    <main class="panel center" id="centerPanel">
+      <h2>Battle Viewer</h2>
 
-  <!-- Background picker -->
-  <div class="controls" style="margin-bottom:6px">
-    <label style="display:flex; gap:8px; align-items:center;">
-      <span>Background</span>
-      <select id="bgSelect"></select>
-      <input id="bgCustom" placeholder="filename.png or full URL"
-             style="flex:1; min-width:220px; background:#141b2a; border:1px solid #2a3242; color:#dbe3f0; border-radius:6px; padding:6px;" />
-      <button id="bgApply">Apply</button>
-      <button id="bgClear">Clear</button>
-    </label>
-  </div>
+      <!-- Background picker -->
+      <div class="controls row compact" id="bgControls">
+        <label class="label">Background</label>
+        <select id="bgSelect"></select>
+        <input id="bgCustom" placeholder="filename.png or full URL" />
+        <button id="bgApply" class="btn">Apply</button>
+        <button id="bgClear" class="btn subtle">Clear</button>
+      </div>
 
-  <div id="sceneMount" style="position:relative; height:80vh; background:#0b111b; border:1px solid #2a3242; border-radius:8px; overflow:hidden;"></div>
-  <!-- sceneOverlay is optional now; you can keep or remove. -->
-  <!-- <div id="sceneOverlay"></div> -->
+      <div id="sceneMount"></div>
+      <!-- (no #sceneOverlay needed; HUD is an overlay child inside #sceneMount) -->
+    </main>
 
-  <div class="row" style="margin-top:8px">
-
-
-    <div class="panel">
+    <!-- RIGHT: enemy picker + tuning -->
+    <aside class="panel" id="rightPanel">
       <h2>Enemy</h2>
+
+      <div class="controls row compact">
+        <input id="enemyFilter" placeholder="Filter… (e.g., goblin)" />
+        <button id="enemyRandom" class="btn">🎲 Random</button>
+      </div>
+
       <div class="list" id="enemyList"></div>
       <div class="footer">Loads from <code>/static/catalog/enemies.json</code>.</div>
-    </div>
+
+      <h2 class="section">Tuning</h2>
+      <div class="controls column">
+        <label class="slider">
+          <span>Viewer Height</span>
+          <input type="range" id="viewerHeight" min="40" max="95" value="80">
+          <output id="vhVal">80vh</output>
+        </label>
+
+        <label class="slider">
+          <span>HUD Opacity</span>
+          <input type="range" id="hudOpacity" min="20" max="95" value="72">
+          <output id="hoVal">0.72</output>
+        </label>
+
+        <label class="slider">
+          <span>HUD Blur</span>
+          <input type="range" id="hudBlur" min="0" max="16" value="6">
+          <output id="hbVal">6px</output>
+        </label>
+
+        <label class="slider">
+          <span>Left Pane Width</span>
+          <input type="range" id="leftWidth" min="200" max="360" value="240">
+          <output id="lwVal">240px</output>
+        </label>
+
+        <label class="slider">
+          <span>Right Pane Width</span>
+          <input type="range" id="rightWidth" min="200" max="360" value="240">
+          <output id="rwVal">240px</output>
+        </label>
+
+        <label class="slider">
+          <span>Grid Gap</span>
+          <input type="range" id="gridGap" min="4" max="28" value="12">
+          <output id="ggVal">12px</output>
+        </label>
+
+        <div class="controls row compact">
+          <button id="resetLayout" class="btn subtle">Reset Layout</button>
+        </div>
+      </div>
+    </aside>
   </div>
 
+  <!-- Your existing sandbox bootstrap -->
   <script type="module" src="/static/js/sandbox/battleSandbox.js"></script>
+
+  <!-- Background manifest-driven picker -->
   <script type="module">
     const MANIFEST_URL = '/static/assets/art/backgrounds/manifest.json';
-
     const selectEl = document.getElementById('bgSelect');
     const customEl = document.getElementById('bgCustom');
     const applyBtn = document.getElementById('bgApply');
@@ -85,9 +124,7 @@
 
     function option(label, value, id='') {
       const o = document.createElement('option');
-      o.value = value;
-      o.textContent = label;
-      if (id) o.dataset.id = id;
+      o.value = value; o.textContent = label; if (id) o.dataset.id = id;
       return o;
     }
 
@@ -98,7 +135,6 @@
         return await res.json();
       } catch (e) {
         console.warn('[bg] manifest load failed, using fallback:', e);
-        // Fallback matches your current tree
         return {
           basePath: '/static/assets/art/backgrounds/',
           backgrounds: [
@@ -116,14 +152,12 @@
       const list = manifest.backgrounds || [];
       selectEl.innerHTML = '';
 
-      // Ensure "None" is first even if not provided
       const none = list.find(b => !b.file) || { id: 'none', label: '— None —', file: '' };
       selectEl.appendChild(option(none.label || '— None —', '', none.id || 'none'));
 
       for (const b of list) {
-        if (!b.file) continue; // already added None
-        const url = base + b.file;
-        selectEl.appendChild(option(b.label || b.file, url, b.id || ''));
+        if (!b.file) continue;
+        selectEl.appendChild(option(b.label || b.file, base + b.file, b.id || ''));
       }
     }
 
@@ -139,7 +173,6 @@
       }
     }
 
-    // Events
     selectEl.addEventListener('change', () => {
       customEl.value = '';
       applyBackground(selectEl.value || '');
@@ -148,28 +181,97 @@
     applyBtn.addEventListener('click', () => {
       const v = (customEl.value || '').trim();
       if (!v) { selectEl.value = ''; applyBackground(''); return; }
-      const base = customEl.value.startsWith('http') ? '' : (JSON.parse(sessionStorage.getItem('bg_manifest') || '{}').basePath || '/static/assets/art/backgrounds/');
-      const url = base + v;
+      const base = v.startsWith('http') ? '' : (JSON.parse(sessionStorage.getItem('bg_manifest') || '{}').basePath || '/static/assets/art/backgrounds/');
+      applyBackground(base + v);
       selectEl.value = ''; // custom overrides select
-      applyBackground(url);
     });
 
     clearBtn.addEventListener('click', () => {
-      selectEl.value = '';
-      customEl.value = '';
-      applyBackground('');
+      selectEl.value = ''; customEl.value = ''; applyBackground('');
     });
 
-    // Boot
     (async () => {
       const manifest = await loadManifest();
-      sessionStorage.setItem('bg_manifest', JSON.stringify(manifest)); // for Apply(custom) basePath
+      sessionStorage.setItem('bg_manifest', JSON.stringify(manifest));
       buildSelect(manifest);
       restore(manifest);
     })();
   </script>
 
+  <!-- Enemy filter + tuners (pure front-end) -->
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
 
+    // --- enemy filter / random ---
+    const enemyFilter = $('enemyFilter');
+    const enemyRandom = $('enemyRandom');
+    const enemyListEl = $('enemyList');
 
+    function filterEnemies() {
+      const q = (enemyFilter.value || '').toLowerCase().trim();
+      [...enemyListEl.querySelectorAll('button')].forEach(b => {
+        b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    }
+    enemyFilter.addEventListener('input', filterEnemies);
+
+    enemyRandom.addEventListener('click', () => {
+      const visible = [...enemyListEl.querySelectorAll('button')].filter(b => b.style.display !== 'none');
+      if (!visible.length) return;
+      const pick = visible[Math.floor(Math.random() * visible.length)];
+      pick.click(); // leverage existing onclick in battleSandbox.js
+      // quick visual flash
+      pick.classList.add('pulse'); setTimeout(()=>pick.classList.remove('pulse'), 350);
+    });
+
+    // --- layout tuners (CSS variables) ---
+    const root = document.documentElement.style;
+
+    const viewerHeight = $('viewerHeight');
+    const hudOpacity   = $('hudOpacity');
+    const hudBlur      = $('hudBlur');
+    const leftWidth    = $('leftWidth');
+    const rightWidth   = $('rightWidth');
+    const gridGap      = $('gridGap');
+
+    const vhVal = $('vhVal'), hoVal = $('hoVal'), hbVal = $('hbVal');
+    const lwVal = $('lwVal'), rwVal = $('rwVal'), ggVal = $('ggVal');
+
+    function setVar(name, val){ root.setProperty(name, val); }
+
+    function initFromInputs() {
+      setVar('--viewer-height', viewerHeight.value + 'vh');
+      setVar('--hud-opacity', (Number(hudOpacity.value) / 100).toString());
+      setVar('--hud-blur', hudBlur.value + 'px');
+      setVar('--left-width', leftWidth.value + 'px');
+      setVar('--right-width', rightWidth.value + 'px');
+      setVar('--grid-gap', gridGap.value + 'px');
+
+      vhVal.textContent = viewerHeight.value + 'vh';
+      hoVal.textContent = (Number(hudOpacity.value)/100).toFixed(2);
+      hbVal.textContent = hudBlur.value + 'px';
+      lwVal.textContent = leftWidth.value + 'px';
+      rwVal.textContent = rightWidth.value + 'px';
+      ggVal.textContent = gridGap.value + 'px';
+    }
+
+    [viewerHeight,hudOpacity,hudBlur,leftWidth,rightWidth,gridGap].forEach(inp=>{
+      inp.addEventListener('input', initFromInputs);
+    });
+
+    $('resetLayout').addEventListener('click', () => {
+      viewerHeight.value = 80;
+      hudOpacity.value   = 72;
+      hudBlur.value      = 6;
+      leftWidth.value    = 240;
+      rightWidth.value   = 240;
+      gridGap.value      = 12;
+      initFromInputs();
+      localStorage.removeItem('battle_bg');
+    });
+
+    // first run
+    initFromInputs();
+  </script>
 </body>
 </html>

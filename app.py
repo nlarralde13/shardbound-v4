@@ -5,13 +5,16 @@ from flask import Flask, render_template, send_file, make_response
 from server.middleware.request_context import assign_request_id
 from server.routes.logs import bp as logs_bp
 
+from mob_manifest import mobs_bp, register_cli
+
 BASE_DIR = Path(__file__).resolve().parent
 (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 app.register_blueprint(logs_bp)
 app.before_request(assign_request_id)
-
+app.register_blueprint(mobs_bp)
+register_cli(app)
 
 @app.route("/")
 @app.route("/index")

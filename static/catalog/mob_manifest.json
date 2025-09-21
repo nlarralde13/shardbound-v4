@@ -1,0 +1,60 @@
+{
+  "version": "0.1",
+  "basePath": "/static/catalog/mobs/",
+  "mobs": [
+    {
+      "id": "goblin_thug",
+      "name": "Goblin Thug",
+      "family": "goblins",
+      "path": "goblins/goblin_thug.json",
+      "classArchetype": "warrior",
+      "tags": ["goblin", "melee"],
+      "levelRange": [1, 6]
+    },
+    {
+      "id": "goblin_cutpurse",
+      "name": "Goblin Cutpurse",
+      "family": "goblins",
+      "path": "goblins/goblin_cutpurse.json",
+      "classArchetype": "rogue",
+      "tags": ["goblin", "melee"],
+      "levelRange": [1, 6]
+    },
+    {
+      "id": "goblin_hunter",
+      "name": "Goblin Hunter",
+      "family": "goblins",
+      "path": "goblins/goblin_hunter.json",
+      "classArchetype": "ranger",
+      "tags": ["goblin", "ranged"],
+      "levelRange": [1, 6]
+    },
+    {
+      "id": "goblin_spellslinger",
+      "name": "Goblin Spellslinger",
+      "family": "goblins",
+      "path": "goblins/goblin_spellslinger.json",
+      "classArchetype": "mage",
+      "tags": ["goblin", "caster"],
+      "levelRange": [1, 6]
+    },
+    {
+      "id": "goblin_acolyte",
+      "name": "Goblin Acolyte",
+      "family": "goblins",
+      "path": "goblins/goblin_acolyte.json",
+      "classArchetype": "cleric",
+      "tags": ["goblin", "support"],
+      "levelRange": [1, 6]
+    },
+    {
+      "id": "goblin_brawler",
+      "name": "Goblin Brawler",
+      "family": "goblins",
+      "path": "goblins/goblin_brawler.json",
+      "classArchetype": "monk",
+      "tags": ["goblin", "melee"],
+      "levelRange": [1, 6]
+    }
+  ]
+}

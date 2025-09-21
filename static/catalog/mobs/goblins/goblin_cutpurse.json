@@ -1,0 +1,30 @@
+{
+  "id": "goblin_cutpurse",
+  "name": "Goblin Cutpurse",
+  "family": "goblins",
+  "faction": "goblin_tribes",
+  "classArchetype": "rogue",
+  "tags": ["goblin", "melee"],
+  "levelRange": [1, 6],
+
+  "stats": {
+    "ACC": 6, "EVA": 6,
+    "ATK": 6, "DEF": 2,
+    "MAG": 1, "MRES": 2,
+    "DEX": 6, "STR": 5, "INT": 2, "WIS": 2,
+    "MP": 0
+  },
+  "resources": { "mp": 0 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
+  "baseStats": { "hp": 20, "atk": 6, "mag": 1, "def": 2, "spd": 6, "armor": 1 },
+  "aiHints": { "style": "skirmisher", "openers": ["dagger_jab"], "priority": ["evade", "mark", "dagger_jab"] },
+  "skills": {
+    "dagger_jab": { "name": "Dagger Jab", "type": "attack", "target": "enemy", "hitChance": 0.95, "cooldown": 0,
+      "effects": [{ "kind": "damage_roll", "min": 1, "max": 4, "scaling": { "atk": 1 } }] },
+    "evade": { "name": "Evade", "type": "buff", "target": "self", "cooldown": 3,
+      "effects": [{ "kind": "buff", "stat": "spd", "amount": 2, "duration": 2 }, { "kind": "evasion", "amountPct": 20, "duration": 1 }] },
+    "mark": { "name": "Mark", "type": "debuff", "target": "enemy", "cooldown": 3,
+      "effects": [{ "kind": "vuln", "amount": 2, "duration": 2 }] }
+  }
+}

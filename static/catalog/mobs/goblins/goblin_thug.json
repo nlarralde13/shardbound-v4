@@ -1,0 +1,28 @@
+{
+  "id": "goblin_thug",
+  "name": "Goblin Thug",
+  "family": "goblins",
+  "faction": "goblin_tribes",
+  "classArchetype": "warrior",
+  "tags": ["goblin", "melee"],
+  "levelRange": [1, 6],
+
+  "stats": {
+    "ACC": 4, "EVA": 4,
+    "ATK": 6, "DEF": 4,
+    "MAG": 1, "MRES": 2,
+    "DEX": 4, "STR": 6, "INT": 1, "WIS": 2,
+    "MP": 0
+  },
+  "resources": { "mp": 0 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
+  "baseStats": { "hp": 24, "atk": 6, "mag": 1, "def": 4, "spd": 4, "armor": 2 },
+  "aiHints": { "style": "frontline", "openers": ["club_slam"], "priority": ["enrage", "club_slam"] },
+  "skills": {
+    "club_slam": { "name": "Club Slam", "type": "attack", "target": "enemy", "hitChance": 0.9, "cooldown": 0,
+      "effects": [{ "kind": "damage_roll", "min": 1, "max": 5, "scaling": { "atk": 1 } }] },
+    "enrage": { "name": "Enrage", "type": "buff", "target": "self", "cooldown": 4,
+      "effects": [{ "kind": "buff_pct", "stat": "damage", "amountPct": 20, "stacks": 5, "consumeOnAttack": true }] }
+  }
+}

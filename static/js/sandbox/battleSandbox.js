@@ -39,18 +39,49 @@ async function loadClassIndex() {
   classes = adaptClassCatalog(json.classes || []);
 }
 
-async function loadEnemies() {
-  const res = await fetch('/static/catalog/enemies.json');
-  if (!res.ok) throw new Error('Missing /static/catalog/enemies.json');
-  const json = await res.json();
+// Prefer API (fresh), fallback to static file if unavailable.
+const MOB_MANIFEST_URL = '/api/mobs/manifest';
+const MOB_MANIFEST_FALLBACK = '/static/catalog/mob_manifest.json';
 
+async function loadEnemies() {
+  let manifest;
+  try {
+    const r = await fetch(MOB_MANIFEST_URL, { cache: 'no-store' });
+    if (!r.ok) throw new Error('api not ok');
+    manifest = await r.json();
+  } catch (_) {
+    const r = await fetch(MOB_MANIFEST_FALLBACK, { cache: 'no-store' });
+    if (!r.ok) throw new Error('no manifest available');
+    manifest = await r.json();
+  }
+
+  const base = (manifest.basePath || '/static/catalog/mobs/').replace(/\/+$/,'/') ;
   const out = {};
-  for (const [id, enemyDef] of Object.entries(json.enemies || {})) {
-    const adapted = adaptEnemy({ ...enemyDef, id });
-    if (adapted) out[adapted.id] = adapted;
+  for (const entry of (manifest.mobs || [])) {
+    const url = base + (entry.path || '').replace(/^\/+/, '');
+    const res  = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) { console.warn('[mobs] missing', url); continue; }
+    const def  = await res.json();
+    const id   = def.id || entry.id || url.split('/').pop().replace(/\.json$/,'');
+    const full = { id, ...entry, ...def };
+    const adapted = (typeof adaptEnemy === 'function') ? adaptEnemy(full) : full;
+    if (adapted) out[id] = adapted;
   }
   enemies = out;
 }
+
+
+  // Fallback: legacy enemies.json (back-compat)
+  const res = await fetch('/static/catalog/enemies.json', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Missing /static/catalog/enemies.json');
+  const json = await res.json();
+  const out = {};
+  for (const [id, enemyDef] of Object.entries(json.enemies || {})) {
+    const adapted = (typeof adaptEnemy === 'function') ? adaptEnemy({ ...enemyDef, id }) : { id, ...enemyDef };
+    if (adapted) out[adapted.id] = adapted;
+  }
+  enemies = out;
+
 
 /* ---------- renderers ---------- */
 function renderClassList() {

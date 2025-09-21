@@ -1,0 +1,28 @@
+{
+  "id": "goblin_brawler",
+  "name": "Goblin Brawler",
+  "family": "goblins",
+  "faction": "goblin_tribes",
+  "classArchetype": "monk",
+  "tags": ["goblin", "melee"],
+  "levelRange": [1, 6],
+
+  "stats": {
+    "ACC": 5, "EVA": 6,
+    "ATK": 6, "DEF": 4,
+    "MAG": 3, "MRES": 3,
+    "DEX": 6, "STR": 5, "INT": 3, "WIS": 3,
+    "MP": 0
+  },
+  "resources": { "mp": 0 },
+  "resist": { "fire": 0, "frost": 0, "lightning": 0, "poison": 0 },
+
+  "baseStats": { "hp": 26, "atk": 6, "mag": 3, "def": 4, "spd": 6, "armor": 1 },
+  "aiHints": { "style": "mobile_melee", "openers": ["palm_strike"], "priority": ["iron_skin", "palm_strike"] },
+  "skills": {
+    "palm_strike": { "name": "Palm Strike", "type": "attack", "target": "enemy", "hitChance": 0.95, "cooldown": 0,
+      "effects": [{ "kind": "damage_roll", "min": 2, "max": 4, "scaling": { "atk": 1 } }] },
+    "iron_skin": { "name": "Iron Skin", "type": "buff", "target": "self", "cooldown": 3,
+      "effects": [{ "kind": "buff", "stat": "def", "amount": 3, "duration": 2 }] }
+  }
+}

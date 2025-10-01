@@ -1,216 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Shardbound — Play</title>
+  <title>Shardbound · Play</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Play styles -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/play.css') }}">
-
-
-
-  <!-- Local overrides to force HUD 50% and make collapse bulletproof -->
-  <style>
-    /* Scale factor for HUD when visible */
-    :root { --hud-scale: .5; --hud-height: 260px; }
-
-    /* We render the battle scene into #viewerStage so we can transform/clip it safely */
-    #battleviewer-root { position: relative; overflow: hidden; }
-    #viewerStage { position: relative; width:100%; height:100%; }
-
-    /* 50% HUD size: try common HUD containers; if none match, scale any bottom HUD-like blocks */
-    #battleviewer-root.hud-compact .battle-hud,
-    #battleviewer-root.hud-compact .hud,
-    #battleviewer-root.hud-compact .combat-ui,
-    #battleviewer-root.hud-compact .actor-panels,
-    #battleviewer-root.hud-compact .actorPanel,
-    #battleviewer-root.hud-compact .unit-panels,
-    #battleviewer-root.hud-compact .unitPanel,
-    #battleviewer-root.hud-compact .bottom-ui,
-    #battleviewer-root.hud-compact .battle-footer,
-    /* Heuristic: any element whose class name contains 'hud' */
-    #battleviewer-root.hud-compact [class*="hud"] {
-      transform: scale(var(--hud-scale));
-      transform-origin: bottom left;
-    }
-
-    /* Prevent scaled HUD from overflowing horizontally; tuck it in */
-    #battleviewer-root.hud-compact .battle-hud,
-    #battleviewer-root.hud-compact .hud,
-    #battleviewer-root.hud-compact .combat-ui,
-    #battleviewer-root.hud-compact [class*="hud"] {
-      margin-bottom: 0 !important;
-      /* ensure it stays anchored at the bottom visually */
-      position: relative;
-      left: 0;
-    }
-
-    /* COLLAPSE: clip the bottom HUD area regardless of class names */
-    #battleviewer-root.hud-hidden #viewerStage {
-      clip-path: inset(0 0 var(--hud-height) 0);
-      pointer-events: auto; /* scene remains interactive */
-    }
-    /* Backup: if your viewer uses fixed/absolute HUD, also hide common classes */
-    body.hud-hidden .battle-hud,
-    body.hud-hidden .hud,
-    body.hud-hidden .combat-ui,
-    body.hud-hidden .actor-panels,
-    body.hud-hidden .actorPanel,
-    body.hud-hidden .unit-panels,
-    body.hud-hidden .unitPanel,
-    body.hud-hidden .bottom-ui,
-    body.hud-hidden .battle-footer,
-    body.hud-hidden [class*="hud"] {
-      display: none !important;
-    }
-  </style>
 </head>
-<body>
 
-  <!-- ===== Top Banner ===================================================== -->
-  <header class="topbar" role="banner">
-    <div class="title">Shardbound: <span id="locationLabel">Onboarding</span></div>
-    <div class="stage" id="onboardingStage">Intro • Step 0 of 4</div>
-    <div class="actions">
-      <button class="ghost" id="toggleLeft">Character</button>
-      <button class="ghost" id="toggleHUD" aria-pressed="false">HUD</button>
-      <button class="ghost" id="toggleRight">Actions</button>
+<body>
+  <!-- ======= TOP ACCOUNT BANNER ======= -->
+  <header class="sb-navbar">
+    <!-- Brand goes to login page for now; change to main.index if you prefer -->
+    <a class="sb-logo sb-brand" href="{{ url_for('auth.login_page') }}" aria-label="Home">
+      <span class="mark" aria-hidden="true"></span>
+      <span>Shardbound</span>
+    </a>
+
+    <nav class="sb-nav" aria-label="Primary">
+      <a href="{{ url_for('game.play') }}">Play</a>
+      <a href="{{ url_for('main.index') }}#map">Map</a>
+      <a href="{{ url_for('main.index') }}#inventory">Inventory</a>
+      <a href="{{ url_for('main.index') }}#quests">Quests</a>
+      <a href="{{ url_for('main.logs') }}">Logs</a>
+    </nav>
+
+    <div class="sb-spacer"></div>
+
+    {% set _user = (current_user if (current_user is defined) else None) %}
+    {% set _name = (_user.username if (_user and _user.is_authenticated) else (session.get('user', {}).get('username') if session is defined else None)) %}
+    {% set username = _name or "Player" %}
+
+    <div class="sb-userchip" id="userChip" aria-haspopup="menu" aria-expanded="false" title="Account">
+      <div class="sb-avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <circle cx="12" cy="8" r="4" stroke-width="1.6"/>
+          <path d="M4 20c1-4 5-6 8-6s7 2 8 6" stroke-width="1.6" />
+        </svg>
+        <span class="sb-online"></span>
+      </div>
+      <span class="sb-username">{{ username }}</span>
+      <svg class="sb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 9l6 6 6-6" stroke-width="2"/></svg>
+
+      <div class="sb-menu" id="userMenu" role="menu" aria-label="User menu">
+        <a class="sb-item" href="{{ url_for('main.index') }}#account">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 20c1-4 5-6 8-6s7 2 8 6"/></svg>
+          <div>Account <div class="hint">Profile & security</div></div>
+        </a>
+        <a class="sb-item" href="{{ url_for('main.index') }}#settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 1 1 4.27 19l.06-.06A1.65 1.65 0 0 0 4.66 17.1 1.65 1.65 0 0 0 3 15.5H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 4.27l.06.06c.48.48 1.17.63 1.82.33.66-.3 1.08-.94 1.08-1.65V3a2 2 0 1 1 4 0v.09c0 .71.42 1.35 1.08 1.65.65.3 1.34.15 1.82-.33l.06-.06A2 2 0 1 1 19.73 7l-.06.06c-.48.48-.63 1.17-.33 1.82.3.66.94 1.08 1.65 1.08H21a2 2 0 1 1 0 4h-.09c-.71 0-1.35.42-1.65 1.08Z"/></svg>
+          <div>Settings <div class="hint">Audio, UI & gameplay</div></div>
+        </a>
+        <div class="sb-sep"></div>
+        <a class="sb-item" href="https://discord.gg/your-server" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21c-3.5 1-7 1-10.5 0L8 19m8 0-1.5 2M7 9a4 4 0 1 0 0 8h10a4 4 0 0 0 0-8" /></svg>
+          <div>Discord <div class="hint">Join the community</div></div>
+          <span class="hint">↗</span>
+        </a>
+        <a class="sb-item" href="{{ url_for('main.docs') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 4h7l5 5v11H6z"/><path d="M13 4v6h6"/></svg>
+          <div>Help / Docs <div class="hint">Game guide & FAQ</div></div>
+        </a>
+        <a class="sb-item" href="{{ url_for('main.logs') }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3h18v4H3zM3 11h18v10H3z"/><path d="M7 11v10M12 11v10M17 11v10"/></svg>
+          <div>Session Logs <div class="hint">Debug & telemetry</div></div>
+        </a>
+        <div class="sb-sep"></div>
+        <button class="sb-item sb-danger" type="button" id="logoutBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+          <div>Log out <div class="hint">Sign out of this session</div></div>
+        </button>
+      </div>
     </div>
+
+    <!-- Hidden logout form (POST) -->
+    <form id="logoutForm" action="{{ url_for('auth.logout') }}" method="post" style="display:none;">
+      {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+    </form>
   </header>
 
-  <!-- ===== Main 3-Column Layout ========================================== -->
-  <main class="layout" role="main" aria-label="Game Layout">
-    <!-- Left Sidebar: Character/Party -->
-    <section id="leftSidebar" class="panel" aria-label="Character Sidebar">
-      <div class="panel-header">
-        <h3>Character</h3>
-        <button class="ghost" data-collapse="left" aria-controls="leftSidebar" aria-expanded="true">Hide</button>
-      </div>
-      <div class="panel-body">
-        <div class="card">
-          <div class="char-head">
-            <div class="char-portrait"></div>
-            <div>
-              <div id="charName" class="char-name">Unbound</div>
-              <div id="charClass" class="char-class">—</div>
-            </div>
-          </div>
-          <div class="stat-grid">
-            <div class="stat"><span>HP</span><span id="statHP">—</span></div>
-            <div class="stat"><span>MP</span><span id="statMP">—</span></div>
-            <div class="stat"><span>ATK</span><span id="statATK">—</span></div>
-            <div class="stat"><span>DEF</span><span id="statDEF">—</span></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Inventory</div>
-          <div id="invList" class="muted">(empty)</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Center Viewport: BattleViewer mount -->
-    <section id="centerViewport" class="panel" aria-label="Viewport">
-      <div class="panel-body panel-body--tight">
-        <div id="battleviewer-root" class="hud-compact" aria-live="polite" aria-busy="true">
-          <!-- We give your viewer a stable stage to mount into -->
-          <div id="viewerStage">
-            <div class="loading-skeleton">BattleViewer will load here…</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Right Sidebar: Actions / Job-board-style prompts + Log -->
-    <aside id="rightSidebar" class="panel" aria-label="Actions Sidebar">
-      <div class="panel-header">
-        <h3>Actions</h3>
-        <button class="ghost" data-collapse="right" aria-controls="rightSidebar" aria-expanded="true">Hide</button>
-      </div>
-      <div class="panel-body actions-body">
-        <button class="btn" id="actionPrimary">Begin Tutorial</button>
-        <button class="btn" id="actionSecondary">Explore Surroundings</button>
-        <button class="btn" id="actionBoard">Visit Job Board</button>
-
-        <div>
-          <div class="card-title">Session Log</div>
-          <div class="log" id="sessionLog" aria-live="polite">
-            [system] Welcome to Shardbound. Creating your legend…
-          </div>
-        </div>
-      </div>
-    </aside>
+  <!-- ======= MAIN CONTENT ======= -->
+  <main id="app-root">
+    {% include 'partials/play_content.html' ignore missing %}
   </main>
 
-  <!-- ===== Bottom Console ================================================= -->
-  <footer class="bottombar" role="contentinfo">
-    <div class="row">
-      <div class="tag" id="statusNet">Online</div>
-      <div class="tag" id="statusUser">User: —</div>
-      <div class="tag" id="statusShard">Shard: —</div>
-      <div class="tag" id="statusFPS">FPS: —</div>
-    </div>
-  </footer>
-
-  <!-- ===== Minimal bootstrap (non-blocking) =============================== -->
-  <script type="module">
-    const $ = sel => document.querySelector(sel);
-
-    // Collapsers (left/right)
-    const leftBtn = document.querySelector('[data-collapse="left"]');
-    const rightBtn = document.querySelector('[data-collapse="right"]');
-    const left = $('#leftSidebar');
-    const right = $('#rightSidebar');
-
-    function togglePanel(panel, btn){
-      const isHidden = panel.classList.toggle('is-collapsed');
-      btn.setAttribute('aria-expanded', String(!isHidden));
-    }
-    leftBtn?.addEventListener('click', ()=>togglePanel(left, leftBtn));
-    rightBtn?.addEventListener('click', ()=>togglePanel(right, rightBtn));
-
-    // Topbar quick toggles
-    $('#toggleLeft')?.addEventListener('click', ()=>togglePanel(left, leftBtn));
-    $('#toggleRight')?.addEventListener('click', ()=>togglePanel(right, rightBtn));
-
-    // HUD toggle: press button or 'H'
-    const hudBtn = $('#toggleHUD');
-    const battleRoot = $('#battleviewer-root');
-
-    function setHudHidden(hidden){
-      // Clip the bottom HUD area and also hide common HUD classes
-      battleRoot.classList.toggle('hud-hidden', hidden);
-      document.body.classList.toggle('hud-hidden', hidden);
-      // Keep the 50% size when visible
-      battleRoot.classList.toggle('hud-compact', !hidden);
-      hudBtn.setAttribute('aria-pressed', String(hidden));
-    }
-    function toggleHUD(){ setHudHidden(!battleRoot.classList.contains('hud-hidden')); }
-
-    hudBtn?.addEventListener('click', toggleHUD);
-    window.addEventListener('keydown', (e)=>{ if (e.key.toLowerCase() === 'h') toggleHUD(); });
-
-    // Lightweight log until play.js takes over
-    function log(msg){
-      const el = $('#sessionLog');
-      if(!el) return;
-      const line = document.createElement('div');
-      line.textContent = msg;
-      el.appendChild(line);
-      el.scrollTop = el.scrollHeight;
-    }
-    log('[ui] Play shell initialized.');
-
-    // Expose the stage so your viewer mounts inside the clip/scale sandbox
-    window.__PLAY_APP__ = {
-      battleRoot: document.getElementById('viewerStage'),
-      log,
-      setStatus: (k,v)=>{ const map={
-        net:'#statusNet', user:'#statusUser', shard:'#statusShard', fps:'#statusFPS'
-      }; const el=$(map[k]); if(el) el.textContent=v; }
-    };
-  </script>
-
-  <!-- Your real boot script -->
+  <!-- Page script -->
   <script type="module" src="{{ url_for('static', filename='js/play.js') }}"></script>
 </body>
 </html>

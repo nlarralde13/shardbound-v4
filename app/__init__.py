@@ -1,78 +1,50 @@
-# app/__init__.py
 import os
+from flask import Flask
 from datetime import timedelta
-from functools import wraps
 
-from flask import Flask, redirect, render_template, session
-from flask_migrate import Migrate
-
-# Your models (single SQLAlchemy instance)
-from .models import db, User, Player
-
-# Blueprints (API)
-from .routes.api_me import bp as me_bp
-from .routes.api_classes import bp as classes_bp
-from .routes.api_characters import bp as chars_bp
-
-
-def login_required(fn):
-    """Redirect to /login when there is no authenticated session."""
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not session.get("user_id"):
-            return redirect("/login")
-        return fn(*args, **kwargs)
-    return wrapper
+# If you use flask_login, import and init it here
+try:
+    from flask_login import LoginManager
+    login_manager = LoginManager()
+except Exception:  # not installed
+    login_manager = None
 
 
 def create_app():
-    # Use Flask defaults for locations *inside the package*:
-    #   templates -> app/templates
-    #   static    -> app/static
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path="/static", static_folder="static", template_folder="templates")
 
-    # ----------------------- Configuration -----------------------
-    # Secrets / sessions
+    # --- Config (tweak as needed) ---
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-change-me")
-    app.config["SESSION_COOKIE_NAME"] = os.getenv("SESSION_COOKIE_NAME", "sb_sess")
-    app.config["SESSION_COOKIE_HTTPONLY"] = True
-    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    # NOTE: set to True in production behind HTTPS
-    app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-    # Database (SQLite fallback to shardbound.db in project root)
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///shardbound.db")
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    # --- Login manager (optional but recommended) ---
+    if login_manager:
+        login_manager.init_app(app)
+        login_manager.login_view = "auth.login_page"  # redirect target for @login_required
 
-    # ----------------------- Extensions --------------------------
-    db.init_app(app)
-    Migrate(app, db)
+        # If you use flask_login with a User model, define this:
+        @login_manager.user_loader
+        def load_user(user_id: str):
+            # TODO: return your User object by id
+            return None
 
-    # ----------------------- Blueprints --------------------------
-    app.register_blueprint(me_bp)        # /api/me, /api/login, /api/logout (if present in your file)
-    app.register_blueprint(classes_bp)   # /api/classes, /api/classes/<id>
-    app.register_blueprint(chars_bp)     # /api/characters
+    # --- Blueprints ---
+    from .main.routes import main_bp
+    from .game.routes import game_bp
+    from .auth.routes import auth_bp
 
-    # ----------------------- Pages -------------------------------
-    @app.get("/")
-    def root_redirect():
-        # If logged in, go straight to the game; otherwise show login
-        return redirect("/play" if session.get("user_id") else "/login")
+    app.register_blueprint(main_bp)
+    app.register_blueprint(game_bp)
+    app.register_blueprint(auth_bp)
 
-    @app.get("/play")
-    @login_required
-    def play():
-        return render_template("play.html")
+    # --- Error pages (optional) ---
+    @app.errorhandler(404)
+    def not_found(e):
+        return ("Not Found", 404)
 
-    @app.get("/login")
-    def login_page():
-        # Served from app/templates/login.html
-        return render_template("login.html")
-
-    # ----------------------- (Optional) Health -------------------
-    @app.get("/healthz")
-    def healthz():
-        return {"ok": True}, 200
+    @app.errorhandler(500)
+    def server_error(e):
+        # In production you’d render a template
+        return ("Server Error", 500)
 
     return app

@@ -3,6 +3,7 @@
 // - populates top/bottom chips
 // - mounts the BattleViewer in tutorial mode for first-time users
 // - simple guards + log helper
+// - wires account chip dropdown + logout
 
 import { mount as mountBattleViewer, unmount as unmountBattleViewer } from '/static/js/viewers/battleViewerEmbed.js';
 import { CharacterCreation } from '/static/js/ui/characterCreation.js';
@@ -43,6 +44,35 @@ function rafFPS(update) {
   requestAnimationFrame(tick);
 }
 
+// --- User menu / logout wiring (moved from play.html) ---
+function wireAccountMenu() {
+  const chip = $('#userChip');
+  const menu = $('#userMenu');
+  const logoutBtn = $('#logoutBtn');
+  const logoutForm = $('#logoutForm');
+
+  if (!chip || !menu) return;
+
+  const open = () => { menu.classList.add('open'); chip.setAttribute('aria-expanded', 'true'); };
+  const close = () => { menu.classList.remove('open'); chip.setAttribute('aria-expanded', 'false'); };
+
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.classList.contains('open') ? close() : open();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && !chip.contains(e.target)) close();
+  });
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+  logoutBtn?.addEventListener('click', () => {
+    // POST to logout; relies on your Flask /logout endpoint
+    logoutForm?.submit();
+  });
+}
+
 // --- UI wiring for the Actions panel (placeholder; introLoop will own later) ---
 function wireActions(me) {
   $('#actionPrimary')?.addEventListener('click', async () => {
@@ -70,6 +100,8 @@ async function startTutorialBattle(me) {
 
 // --- Main bootstrap ---
 async function boot() {
+  wireAccountMenu(); // <— moved from inline
+
   setStatus('net', 'Online');
   setStatus('user', 'User: (checking…)');
 
@@ -79,32 +111,23 @@ async function boot() {
 
   // Fetch /api/me
   const me = await apiMe();
+  if (!me) return;
+
   if (!me.has_character) {
     CharacterCreation.open({
-        onCreate: () => {
-        // Refresh /api/me and continue intro
-        window.location.reload();
-        }
+      onCreate: () => window.location.reload()
     });
-    return; // stop here; battle viewer mounts after creation
-    }
-
+    return;
+  }
 
   // Topbar stage & bottom chips
-  $('#onboardingStage').textContent =
-    me.onboarding_stage ? `Onboarding • ${me.onboarding_stage}` : 'Adventure';
+  $('#onboardingStage') && ($('#onboardingStage').textContent =
+    me.onboarding_stage ? `Onboarding • ${me.onboarding_stage}` : 'Adventure');
   setStatus('user', `User: ${me.user?.username || 'Unknown'}`);
   setStatus('shard', `Shard: ${me.shard || '—'}`);
 
-  // First-time players: show character creation overlay (next milestone)
-  // For now, we’ll mount the tutorial viewer so the center isn’t empty.
-  if (!me.has_character) {
-    log('[onboarding] No character found. Character creation will appear next. Loading tutorial viewer in the meantime…');
-    await startTutorialBattle(me);
-  } else {
-    // If onboarding not complete, you can choose to show a prompt instead.
-    await startTutorialBattle(me);
-  }
+  // Mount a first encounter
+  await startTutorialBattle(me);
 
   // Wire actions last so buttons are live
   wireActions(me);

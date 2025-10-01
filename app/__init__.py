@@ -58,9 +58,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp)
 
     from .routes.api_classes import bp as classes_bp
-    from .routes.api_characters import bp as characters_bp
 
     app.register_blueprint(classes_bp)
-    app.register_blueprint(characters_bp)
 
     return app

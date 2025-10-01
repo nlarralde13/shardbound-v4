@@ -69,7 +69,7 @@ def test_api_login_bad_credentials(client, user_id):
 
 def test_api_me_requires_auth(client):
     res = client.get("/api/me")
-    assert res.status_code == 200
+    assert res.status_code == 401
     data = res.get_json()
     assert data["authenticated"] is False
     assert data["user"] is None
@@ -80,7 +80,7 @@ def test_api_me_after_login(client, app, user_id):
     assert login.status_code == 200
 
     with app.app_context():
-        player = Player(user_id=user_id, class_id="fighter", gender="male")
+        player = Player(user_id=user_id, class_id="Warrior", gender="male", display_name="Hero", title="the Bold")
         db.session.add(player)
         db.session.commit()
 
@@ -88,8 +88,9 @@ def test_api_me_after_login(client, app, user_id):
     data = res.get_json()
     assert data["authenticated"] is True
     assert data["user"]["username"] == "testuser"
-    assert data["player"]["has_character"] is True
-    assert data["player"]["class_id"] == "fighter"
+    assert data["has_character"] is True
+    assert data["character"]["class"] == "Warrior"
+    assert data["character"]["name"] == "Hero"
 
 
 def test_api_logout_clears_session(client, app, user_id):
@@ -99,5 +100,24 @@ def test_api_logout_clears_session(client, app, user_id):
     assert res.status_code in (200, 204)
 
     me = client.get("/api/me")
+    assert me.status_code == 401
+
+
+def test_create_character_flow(client, app, user_id):
+    login = client.post("/api/login", json={"username": "testuser", "password": "secret123"})
+    assert login.status_code == 200
+
+    res = client.post(
+        "/api/characters",
+        json={"name": "Aria", "class": "Mage", "title": "the Unbound"},
+    )
+    assert res.status_code == 201
+    data = res.get_json()
+    assert data["ok"] is True
+    assert data["character"]["name"] == "Aria"
+
+    me = client.get("/api/me")
+    assert me.status_code == 200
     payload = me.get_json()
-    assert payload["authenticated"] is False
+    assert payload["has_character"] is True
+    assert payload["character"]["class"] == "Mage"

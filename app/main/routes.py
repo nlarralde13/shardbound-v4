@@ -1,11 +1,21 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, redirect, render_template, url_for
+
+try:
+    from flask_login import current_user
+except Exception:  # pragma: no cover - flask_login optional in some envs
+    current_user = None
 
 main_bp = Blueprint("main", __name__)
 
 @main_bp.get("/")
 def index():
-    # Replace with your actual landing page template if desired
-    return render_template("index.html") if "index.html" else ("OK", 200)
+    is_authenticated = False
+    if current_user is not None:
+        try:
+            is_authenticated = bool(current_user.is_authenticated)
+        except Exception:
+            is_authenticated = False
+    return redirect(url_for("game.play") if is_authenticated else url_for("auth.login_page"))
 
 @main_bp.get("/docs")
 def docs():

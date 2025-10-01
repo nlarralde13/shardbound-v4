@@ -1,15 +1,18 @@
+# app/__init__.py
 import os
 from datetime import timedelta
+from typing import Optional
 
 from flask import Flask
+
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
 try:  # flask-login is optional in some environments
-    from flask_login import LoginManager
-except Exception:  # pragma: no cover - flask_login optional
-    LoginManager = None  # type: ignore[assignment]
 
+    from flask_login import LoginManager
+except Exception:  # pragma: no cover
+    LoginManager = None  # type: ignore
 # ---------------------------------------------------------------------------
 # Extension instances (singletons shared across the app)
 # ---------------------------------------------------------------------------
@@ -23,10 +26,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
     app = Flask(
         __name__,
-        static_url_path="/static",
         static_folder="static",
         template_folder="templates",
+        instance_relative_config=True,  # allows instance/ for local sqlite, secrets, etc.
     )
+
 
     os.makedirs(app.instance_path, exist_ok=True)
     default_db = os.getenv("DATABASE_URL") or f"sqlite:///{os.path.join(app.instance_path, 'shardbound.db')}"
@@ -40,27 +44,37 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
     )
 
+
     if config_overrides:
         app.config.update(config_overrides)
 
+    # Ensure instance folder exists for SQLite
+    try:
+        os.makedirs(app.instance_path, exist_ok=True)
+    except OSError:
+        pass
+
+    # --- Init extensions -----------------------------------------------------
     db.init_app(app)
 
     # Import models after the database has been initialized so Alembic can
     # detect metadata from the same SQLAlchemy instance.
     from . import models  # noqa: F401
 
+
     if login_manager:
         from .models import User
 
         login_manager.init_app(app)
-        login_manager.login_view = "auth.login_page"
-        login_manager.session_protection = "strong"
+        login_manager.login_view = "auth.login"  # change if your route name differs
 
         @login_manager.user_loader
-        def load_user(user_id: str):  # pragma: no cover - exercised in integration
-            if not user_id:
-                return None
+        def load_user(user_id: str):
+            # Local import to avoid circular deps
+            from .models import User  # type: ignore
+            # If your User PK is UUID/str, adjust cast accordingly
             try:
+
                 return User.query.get(int(user_id))
             except (ValueError, TypeError):
                 return None
@@ -76,6 +90,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(game_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(classes_bp)
+
 
     return app
 

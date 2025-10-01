@@ -1,7 +1,9 @@
 # app/routes/api_me.py
 from flask import Blueprint, request, jsonify, session
 from sqlalchemy import func
-from app.models import db, User, Player
+
+from app import db
+from app.models import User, Player
 
 bp = Blueprint("api_me", __name__)
 

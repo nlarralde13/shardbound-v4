@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 from flask import session
 from sqlalchemy import func
 
-from app.models import db, User, Player
+from app import db
+from app.models import User, Player
 
 try:  # flask_login is optional in some deployments
     from flask_login import current_user as flask_current_user

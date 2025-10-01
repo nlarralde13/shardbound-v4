@@ -29,8 +29,8 @@ from getpass import getpass
 from sqlalchemy import func
 
 # Package-aware imports
-from app import create_app
-from app.models import db, User, Player
+from app import create_app, db
+from app.models import User, Player
 
 
 # ----------------------------------------------------------------------

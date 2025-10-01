@@ -27,8 +27,8 @@ import sys
 from sqlalchemy import func
 
 # Package imports (new structure)
-from app import create_app
-from app.models import db, User, Player
+from app import create_app, db
+from app.models import User, Player
 
 
 # ------------------------ Pretty table helpers ------------------------ #

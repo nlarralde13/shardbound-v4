@@ -1,6 +1,8 @@
 # routes/api_characters.py
 from flask import Blueprint, request, jsonify, session
-from app.models import db, User, Player
+
+from app import db
+from app.models import User, Player
 
 bp = Blueprint('api_characters', __name__)
 

@@ -1,4 +1,6 @@
 # models.py
+from __future__ import annotations
+
 from datetime import datetime, date
 import bcrypt
 from flask_sqlalchemy import SQLAlchemy
@@ -40,16 +42,27 @@ class User(UserMixin, db.Model):
 class Player(db.Model):
     __tablename__ = "players"
 
-    id               = db.Column(db.Integer, primary_key=True)
-    user_id          = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False)
 
-    class_id         = db.Column(db.String(32), nullable=False)
-    gender           = db.Column(db.String(8),  nullable=False, default="male")
-    display_name     = db.Column(db.String(64))
+    class_id = db.Column(db.String(32), nullable=False)
+    gender = db.Column(db.String(8), nullable=False, default="male")
+    display_name = db.Column(db.String(64))
+    title = db.Column(db.String(64))
     onboarding_stage = db.Column(db.String(32))
-    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user             = db.relationship("User", back_populates="player")
+    user = db.relationship("User", back_populates="player")
+
+    def as_character_payload(self) -> dict[str, str | int | None]:
+        """Serialize the player model into the character payload shape."""
+
+        return {
+            "id": self.id,
+            "name": self.display_name,
+            "class": self.class_id,
+            "title": self.title,
+        }
 
     def __repr__(self):
         return f"<Player user_id={self.user_id} class={self.class_id}>"

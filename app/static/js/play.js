@@ -5,8 +5,7 @@
 // - simple guards + log helper
 // - wires account chip dropdown + logout
 
-import { mount as mountBattleViewer, unmount as unmountBattleViewer } from '/static/js/viewers/battleViewerEmbed.js';
-import { CharacterCreation } from '/static/js/ui/characterCreation.js';
+import { mount as mountBattleViewer } from '/static/js/viewers/battleViewerEmbed.js';
 
 // Small DOM helpers
 const $  = (s, r=document) => r.querySelector(s);
@@ -18,9 +17,27 @@ const battleRoot = PLAY.battleRoot || $('#battleviewer-root');
 const log = (msg) => (PLAY.log ? PLAY.log(msg) : console.log('[play]', msg));
 const setStatus = (k,v) => (PLAY.setStatus ? PLAY.setStatus(k,v) : void 0);
 
+const CLASS_PORTRAITS = {
+  Warrior: 'portrait-warrior',
+  Mage: 'portrait-mage',
+  Cleric: 'portrait-cleric',
+  Ranger: 'portrait-ranger',
+  Rogue: 'portrait-rogue',
+  Monk: 'portrait-monk',
+};
+const PORTRAIT_CLASSES = Object.values(CLASS_PORTRAITS);
+
+let currentViewer = null;
+let meState = null;
+let modalControls = null;
+
 // --- API ----
 async function apiMe() {
   const res = await fetch('/api/me', { credentials: 'include' });
+  if (res.status === 401) {
+    window.location.assign('/login');
+    return null;
+  }
   if (!res.ok) throw new Error(`/api/me failed: ${res.status}`);
   const data = await res.json();
   if (!data.authenticated) {
@@ -28,6 +45,29 @@ async function apiMe() {
     return null;
   }
   return data;
+}
+
+async function postCharacter(body) {
+  const res = await fetch('/api/characters', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch (err) {
+    json = null;
+  }
+  if (!res.ok) {
+    const message = json?.error || Object.values(json?.errors || {})[0] || 'Could not create character.';
+    const error = new Error(message);
+    error.status = res.status;
+    throw error;
+  }
+  return json;
 }
 
 // Optional: light debounce for FPS display if you wire one later
@@ -85,6 +125,133 @@ function wireAccountMenu() {
   });
 }
 
+function updatePortraitPreview(el, className, baseClass) {
+  if (!el) return;
+  const cls = CLASS_PORTRAITS[className] || CLASS_PORTRAITS.Warrior;
+  PORTRAIT_CLASSES.forEach((c) => el.classList.remove(c));
+  if (baseClass) {
+    el.className = baseClass;
+  }
+  el.classList.add(cls);
+}
+
+function initCharacterModal(onCreated) {
+  const modal = $('#charCreateModal');
+  const form = $('#charCreateForm');
+  const nameInput = $('#ccName');
+  const classSelect = $('#ccClass');
+  const titleInput = $('#ccTitleInput');
+  const submitBtn = $('#ccSubmit');
+  const cancelBtn = $('#ccCancel');
+  const closeBtn = $('#ccCloseBtn');
+  const portrait = $('#ccPortrait');
+  const errorEl = $('#ccError');
+
+  if (!modal || !form || !nameInput || !classSelect || !submitBtn || !portrait) {
+    return { open() {}, close() {} };
+  }
+
+  let lastFocused = null;
+  let focusables = [];
+
+  const refreshFocusables = () => {
+    focusables = $$('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])', modal)
+      .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+  };
+
+  const setError = (message) => {
+    if (errorEl) {
+      errorEl.textContent = message || '';
+    }
+  };
+
+  const handleKeydown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab' || !focusables.length) return;
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey) {
+      if (document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const open = () => {
+    lastFocused = document.activeElement;
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    setError('');
+    refreshFocusables();
+    updatePortraitPreview(portrait, classSelect.value, 'portrait-frame');
+    setTimeout(() => nameInput.focus(), 0);
+    document.addEventListener('keydown', handleKeydown);
+  };
+
+  const close = () => {
+    modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+    document.removeEventListener('keydown', handleKeydown);
+    setError('');
+    if (lastFocused && lastFocused.focus) {
+      lastFocused.focus();
+    }
+  };
+
+  classSelect.addEventListener('change', () => {
+    updatePortraitPreview(portrait, classSelect.value, 'portrait-frame');
+  });
+
+  modal.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target && target.dataset && target.dataset.close === 'cc') {
+      close();
+    }
+  });
+
+  closeBtn?.addEventListener('click', () => close());
+  cancelBtn?.addEventListener('click', () => close());
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setError('');
+
+    const payload = {
+      name: nameInput.value.trim(),
+      title: titleInput?.value.trim() || '',
+      class: classSelect.value,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating…';
+
+    try {
+      await postCharacter(payload);
+      close();
+      if (onCreated) {
+        await onCreated();
+      }
+    } catch (err) {
+      console.error('[character] creation failed', err);
+      setError(err.message || 'Could not create character.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Character';
+    }
+  });
+
+  return { open, close };
+}
+
 // --- UI wiring for the Actions panel (placeholder; introLoop will own later) ---
 function wireActions(me) {
   $('#actionPrimary')?.addEventListener('click', async () => {
@@ -95,13 +262,19 @@ function wireActions(me) {
   $('#actionBoard')?.addEventListener('click', () => log('[board] The job board creaks with fresh postings…'));
 }
 
-// --- Battle bootstrap for first-time users or when the CTA is pressed ---
-let currentViewer = null;
+function hydrateCharacterCard(character) {
+  if (!character) return;
+  $('#charName') && ($('#charName').textContent = character.name || 'Unknown Adventurer');
+  $('#charTitle') && ($('#charTitle').textContent = character.title || 'Ready for adventure');
+  $('#charClass') && ($('#charClass').textContent = character.class);
+  const portrait = $('#charPortrait');
+  updatePortraitPreview(portrait, character.class, 'char-portrait');
+}
 
+// --- Battle bootstrap for first-time users or when the CTA is pressed ---
 async function startTutorialBattle(me) {
   try {
     if (currentViewer) { currentViewer.unmount?.(); currentViewer = null; }
-    // You can pass seed.player when you have a real player entity from DB.
     currentViewer = await mountBattleViewer(battleRoot, { mode: 'tutorial' });
     log('[battle] Tutorial battle loaded.');
   } catch (err) {
@@ -110,40 +283,41 @@ async function startTutorialBattle(me) {
   }
 }
 
-// --- Main bootstrap ---
-async function boot() {
-  wireAccountMenu(); // <— moved from inline
+async function refreshMeAndHydrate() {
+  const data = await apiMe();
+  if (!data) return;
+  meState = data;
 
-  setStatus('net', 'Online');
-  setStatus('user', 'User: (checking…)');
-
-  // Populate a “calculating” FPS until wired
-  setStatus('fps', 'FPS: —');
-  rafFPS(fps => setStatus('fps', `FPS: ${fps}`));
-
-  // Fetch /api/me
-  const me = await apiMe();
-  if (!me) return;
-
-  const player = me.player || { has_character: false };
-  if (!player.has_character) {
-    CharacterCreation.open({
-      onCreate: () => window.location.reload()
-    });
+  if (!data.has_character) {
+    modalControls?.open();
     return;
   }
 
-  // Topbar stage & bottom chips
-  $('#onboardingStage') && ($('#onboardingStage').textContent =
-    player.onboarding_stage ? `Onboarding • ${player.onboarding_stage}` : 'Adventure');
-  setStatus('user', `User: ${me.user?.username || 'Unknown'}`);
-  setStatus('shard', `Shard: ${me.shard || '—'}`);
+  hydrateCharacterCard(data.character);
+  setStatus('user', `User: ${data.user?.username || 'Unknown'}`);
+  setStatus('net', 'Network: Online');
+  setStatus('shard', `Shard: ${data.shard || '—'}`);
+  setStatus('coords', 'Coords: —');
+  setStatus('biome', 'Biome: —');
 
-  // Mount a first encounter
-  await startTutorialBattle(me);
+  await startTutorialBattle(data);
+  wireActions(data);
+}
 
-  // Wire actions last so buttons are live
-  wireActions(me);
+// --- Main bootstrap ---
+async function boot() {
+  wireAccountMenu();
+  modalControls = initCharacterModal(refreshMeAndHydrate);
+
+  setStatus('net', 'Network: Connecting…');
+  setStatus('user', 'User: (checking…)');
+  setStatus('shard', 'Shard: —');
+  setStatus('coords', 'Coords: —');
+  setStatus('biome', 'Biome: —');
+  setStatus('fps', 'FPS: —');
+  rafFPS(fps => setStatus('fps', `FPS: ${fps}`));
+
+  await refreshMeAndHydrate();
 }
 
 boot().catch(err => {

@@ -95,7 +95,8 @@ def api_logout():
 @auth_bp.get("/api/me")
 def api_me():
     payload = me_payload()
-    return jsonify(payload)
+    status = HTTPStatus.OK if payload.get("authenticated") else HTTPStatus.UNAUTHORIZED
+    return jsonify(payload), status
 
 
 @auth_bp.post("/api/signup")

@@ -81,8 +81,149 @@
 
   <!-- ======= MAIN CONTENT ======= -->
   <main id="app-root">
-    {% include 'partials/play_content.html' ignore missing %}
+    <div class="play-layout" id="playLayout">
+      <section class="panel panel-left" aria-labelledby="charPanelHeading">
+        <header class="panel-header">
+          <h2 id="charPanelHeading">Character</h2>
+          <div id="onboardingStage" class="panel-subtitle">Adventure</div>
+        </header>
+        <div class="char-card">
+          <div id="charPortrait" class="char-portrait" aria-hidden="true"></div>
+          <div class="char-meta">
+            <h3 id="charName">—</h3>
+            <p id="charTitle" class="char-title">Create a character to begin</p>
+            <dl class="char-stats">
+              <div>
+                <dt>Class</dt>
+                <dd id="charClass">—</dd>
+              </div>
+              <div>
+                <dt>XP</dt>
+                <dd id="charXP">0</dd>
+              </div>
+              <div>
+                <dt>Power</dt>
+                <dd id="charPower">0</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+        <div class="char-log" id="charLog" aria-live="polite"></div>
+      </section>
+
+      <section class="panel panel-center" aria-labelledby="battlePanelHeading">
+        <header class="panel-header">
+          <h2 id="battlePanelHeading">Battle Viewer</h2>
+          <p class="panel-subtitle">Tutorial encounter</p>
+        </header>
+        <div id="battleviewer-root" class="battle-shell" role="application" aria-label="Battle Viewer"></div>
+      </section>
+
+      <section class="panel panel-right" aria-labelledby="encountersHeading">
+        <header class="panel-header">
+          <h2 id="encountersHeading">Encounters</h2>
+          <p class="panel-subtitle">Nearby threats</p>
+        </header>
+        <div class="panel-section">
+          <h3 class="panel-section-title">Hostiles</h3>
+          <ul id="enemyList" class="list enemy-list" aria-live="polite"></ul>
+        </div>
+        <div class="panel-section">
+          <h3 class="panel-section-title">Session Log</h3>
+          <div id="sessionLog" class="log"></div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="play-hud" role="status" aria-live="polite">
+      <div class="hud-chip" id="hudNet">Network: —</div>
+      <div class="hud-chip" id="hudUser">User: —</div>
+      <div class="hud-chip" id="hudShard">Shard: —</div>
+      <div class="hud-chip" id="hudCoords">Coords: —</div>
+      <div class="hud-chip" id="hudBiome">Biome: —</div>
+      <div class="hud-chip" id="hudFPS">FPS: —</div>
+    </footer>
+
+    <!-- Character Creation Modal (hidden by default) -->
+    <div id="charCreateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ccTitle">
+      <div class="modal-backdrop" data-close="cc"></div>
+      <div class="modal-panel" role="document">
+        <header class="modal-header">
+          <h2 id="ccTitle">Create Your Character</h2>
+          <button class="modal-close" id="ccCloseBtn" aria-label="Close">×</button>
+        </header>
+
+        <form id="charCreateForm" class="modal-body" autocomplete="off">
+          <div class="form-row">
+            <label for="ccName">Name</label>
+            <input id="ccName" name="name" type="text" minlength="2" maxlength="24" required />
+          </div>
+
+          <div class="form-row">
+            <label for="ccTitleInput">Title (optional)</label>
+            <input id="ccTitleInput" name="title" type="text" maxlength="32" placeholder="e.g., ‘the Unbound’" />
+          </div>
+
+          <div class="form-row">
+            <label for="ccClass">Class</label>
+            <select id="ccClass" name="class" required>
+              <option value="Warrior">Warrior</option>
+              <option value="Mage">Mage</option>
+              <option value="Cleric">Cleric</option>
+              <option value="Ranger">Ranger</option>
+              <option value="Rogue">Rogue</option>
+              <option value="Monk">Monk</option>
+            </select>
+          </div>
+
+          <!-- Portrait preview auto-updates based on class -->
+          <div class="portrait-preview">
+            <div id="ccPortrait" class="portrait-frame"></div>
+          </div>
+
+          <div id="ccError" class="form-error" role="alert" aria-live="assertive"></div>
+
+          <footer class="modal-footer">
+            <button type="submit" class="btn btn-primary" id="ccSubmit">Create Character</button>
+            <button type="button" class="btn" id="ccCancel">Cancel</button>
+          </footer>
+        </form>
+      </div>
+    </div>
   </main>
+
+  <script>
+    window.__PLAY_APP__ = {
+      battleRoot: document.getElementById('battleviewer-root'),
+      log(message) {
+        const logEl = document.getElementById('sessionLog');
+        if (logEl) {
+          const item = document.createElement('div');
+          item.className = 'log-entry';
+          item.textContent = message;
+          logEl.prepend(item);
+        }
+        console.log('[play]', message);
+      },
+      setStatus(key, value) {
+        const mapping = {
+          shard: 'hudShard',
+          coords: 'hudCoords',
+          biome: 'hudBiome',
+          fps: 'hudFPS',
+          net: 'hudNet',
+          user: 'hudUser'
+        };
+        const targetId = mapping[key] || null;
+        if (targetId) {
+          const el = document.getElementById(targetId);
+          if (el) {
+            el.textContent = value;
+          }
+        }
+      }
+    };
+  </script>
 
   <!-- Page script -->
   <script type="module" src="{{ url_for('static', filename='js/play.js') }}"></script>

@@ -13,9 +13,10 @@ JSON APIs consumed by `static/js/play.js` and `static/js/login.js`.
    returns the authenticated user payload. The frontend then navigates to
    `/play`.
 4. Subsequent SPA calls hit [`GET /api/me`](app/auth/routes.py) to retrieve the
-   authenticated profile and optional `player` snapshot. Unauthenticated users
-   receive `{ "authenticated": false }` and are redirected to `/login` by the
-   client.
+   authenticated profile. The JSON payload contains `authenticated`, `user`,
+   `has_character`, and an optional `character` object with `id`, `name`,
+   `class`, and `title`. Unauthenticated users receive a `401` response and the
+   frontend redirects them to `/login`.
 5. Logout is handled via [`POST /api/logout`](app/auth/routes.py), which clears
    both the Flask session and any `flask_login` state.
 
@@ -34,3 +35,24 @@ pytest -q
 
 See [`openapi.yaml`](openapi.yaml) for the minimal contract covering the three
 authentication endpoints.
+
+## Character Creation Flow
+
+* First-time players authenticate and are redirected to `/play`. The client
+  immediately calls `/api/me`; when `has_character` is `false`, the character
+  creation modal opens on top of the play layout and focus is trapped inside the
+  form until it is submitted or closed.
+* The modal submits to [`POST /api/characters`](app/game/routes.py) with a JSON
+  body containing `name`, `class`, and optional `title`. On success the client
+  refetches `/api/me` and mounts the battle viewer with the new character data.
+* To test the flow manually:
+  1. Create an account (or use the test fixture) and log in.
+  2. Clear the `players` table for that user so `/api/me` reports
+     `has_character: false`.
+  3. Visit `/play`; the modal should appear automatically. Submit the form and
+     ensure the character summary and HUD update.
+* Adjust the allowed archetypes by editing `ALLOWED_CLASSES` in
+  [`app/game/routes.py`](app/game/routes.py). Update the modal portrait tints by
+  editing `CLASS_PORTRAITS` in
+  [`app/static/js/play.js`](app/static/js/play.js) and the CSS classes in
+  [`app/static/css/play.css`](app/static/css/play.css).

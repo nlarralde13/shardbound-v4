@@ -82,28 +82,23 @@ def serialize_user(user: User) -> Dict[str, Any]:
     }
 
 
-def serialize_player(player: Optional[Player]) -> Dict[str, Any]:
+def serialize_character(player: Optional[Player]) -> Dict[str, Any] | None:
     if not player:
-        return {"has_character": False}
-    return {
-        "has_character": True,
-        "id": player.id,
-        "class_id": player.class_id,
-        "display_name": player.display_name,
-        "onboarding_stage": player.onboarding_stage,
-    }
+        return None
+    return player.as_character_payload()
 
 
 def me_payload() -> Dict[str, Any]:
     user = get_authenticated_user()
     if not user:
-        return {"authenticated": False, "user": None}
+        return {"authenticated": False, "user": None, "has_character": False, "character": None}
 
     player = user.player if hasattr(user, "player") else None
     payload: Dict[str, Any] = {
         "authenticated": True,
         "user": serialize_user(user),
-        "player": serialize_player(player),
+        "has_character": bool(player),
+        "character": serialize_character(player),
     }
     return payload
 

@@ -21,13 +21,13 @@ const setStatus = (k,v) => (PLAY.setStatus ? PLAY.setStatus(k,v) : void 0);
 // --- API ----
 async function apiMe() {
   const res = await fetch('/api/me', { credentials: 'include' });
-  if (res.status === 401) {
-    // Not logged in
+  if (!res.ok) throw new Error(`/api/me failed: ${res.status}`);
+  const data = await res.json();
+  if (!data.authenticated) {
     window.location.assign('/login');
     return null;
   }
-  if (!res.ok) throw new Error(`/api/me failed: ${res.status}`);
-  return res.json();
+  return data;
 }
 
 // Optional: light debounce for FPS display if you wire one later
@@ -49,7 +49,6 @@ function wireAccountMenu() {
   const chip = $('#userChip');
   const menu = $('#userMenu');
   const logoutBtn = $('#logoutBtn');
-  const logoutForm = $('#logoutForm');
 
   if (!chip || !menu) return;
 
@@ -67,9 +66,22 @@ function wireAccountMenu() {
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
-  logoutBtn?.addEventListener('click', () => {
-    // POST to logout; relies on your Flask /logout endpoint
-    logoutForm?.submit();
+  logoutBtn?.addEventListener('click', async (event) => {
+    event.preventDefault();
+    try {
+      const res = await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok && res.status !== 204) {
+        throw new Error(`Logout failed: ${res.status}`);
+      }
+    } catch (err) {
+      console.error('[auth] logout failed', err);
+    } finally {
+      window.location.assign('/login');
+    }
   });
 }
 
@@ -113,7 +125,8 @@ async function boot() {
   const me = await apiMe();
   if (!me) return;
 
-  if (!me.has_character) {
+  const player = me.player || { has_character: false };
+  if (!player.has_character) {
     CharacterCreation.open({
       onCreate: () => window.location.reload()
     });
@@ -122,7 +135,7 @@ async function boot() {
 
   // Topbar stage & bottom chips
   $('#onboardingStage') && ($('#onboardingStage').textContent =
-    me.onboarding_stage ? `Onboarding • ${me.onboarding_stage}` : 'Adventure');
+    player.onboarding_stage ? `Onboarding • ${player.onboarding_stage}` : 'Adventure');
   setStatus('user', `User: ${me.user?.username || 'Unknown'}`);
   setStatus('shard', `Shard: ${me.shard || '—'}`);
 

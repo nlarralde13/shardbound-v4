@@ -3,9 +3,15 @@ from datetime import datetime, date
 import bcrypt
 from flask_sqlalchemy import SQLAlchemy
 
+try:
+    from flask_login import UserMixin
+except Exception:  # pragma: no cover - flask_login optional
+    class UserMixin:  # type: ignore[dead code]
+        pass
+
 db = SQLAlchemy()
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id           = db.Column(db.Integer, primary_key=True)

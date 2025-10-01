@@ -19,6 +19,9 @@
     const user = qs("#login-username").value.trim();
     const pass = qs("#login-password").value;
 
+    const errorBox = qs("#login-error");
+    if (errorBox) errorBox.textContent = "";
+
     try {
       const res = await fetch("/api/login", {
         method: "POST",
@@ -26,16 +29,36 @@
         credentials: "include",
         body: JSON.stringify({ username: user, password: pass }),
       });
-      const data = await res.json();
-      if (data.ok) {
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.ok) {
         window.location.href = data.redirect || "/play";
-      } else {
-        (qs("#login-error") || {}).textContent =
-          "⚔️ The guild does not recognize you.";
+        return false;
       }
+
+      if (res.status === 400) {
+        const details = data.errors || {};
+        const messages = [];
+        if (details.username) messages.push(`Username: ${details.username}`);
+        if (details.password) messages.push(`Password: ${details.password}`);
+        if (details._) messages.push(details._);
+        (errorBox || {}).textContent = messages.join("  •  ") || "Please correct the highlighted fields.";
+        return false;
+      }
+
+      if (res.status === 401) {
+        (errorBox || {}).textContent = "⚔️ The guild does not recognize you.";
+        return false;
+      }
+
+      if (res.status === 429) {
+        (errorBox || {}).textContent = data.error || "Too many attempts. Try again soon.";
+        return false;
+      }
+
+      (errorBox || {}).textContent = data.error || "Login failed. Please try again.";
     } catch (err) {
-      (qs("#login-error") || {}).textContent =
-        "Network gremlins detected. Please try again.";
+      (errorBox || {}).textContent = "Network gremlins detected. Please try again.";
     }
     return false;
   }

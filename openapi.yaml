@@ -1,0 +1,171 @@
+openapi: 3.0.3
+info:
+  title: Shardbound Auth API
+  version: 0.1.0
+  description: >-
+    Minimal contract for login, logout, and session inspection used by the
+    Shardbound prototype client.
+servers:
+  - url: http://localhost:5000
+    description: Development server
+paths:
+  /api/login:
+    post:
+      summary: Authenticate a user
+      description: >-
+        Validates credentials and issues a session cookie. Responses always use
+        cookies for authentication; CSRF protection for JSON APIs is handled by
+        requiring credentials on every request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginSuccess'
+        '400':
+          description: Invalid or incomplete payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Incorrect credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many attempts (reserved for future rate limiting)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - sessionCookieAuth: []
+  /api/logout:
+    post:
+      summary: Terminate the current session
+      responses:
+        '204':
+          description: Logged out successfully
+        '401':
+          description: No active session
+      security:
+        - sessionCookieAuth: []
+  /api/me:
+    get:
+      summary: Return the current authentication state
+      responses:
+        '200':
+          description: Session summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+      security:
+        - sessionCookieAuth: []
+components:
+  securitySchemes:
+    sessionCookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie issued by `/api/login`.
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: player_one
+        password:
+          type: string
+          format: password
+          example: swordfish
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          nullable: true
+          format: email
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+    PlayerSnapshot:
+      type: object
+      properties:
+        has_character:
+          type: boolean
+        id:
+          type: integer
+          nullable: true
+        class_id:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          nullable: true
+        onboarding_stage:
+          type: string
+          nullable: true
+    LoginSuccess:
+      type: object
+      required:
+        - ok
+        - user
+      properties:
+        ok:
+          type: boolean
+          const: true
+        redirect:
+          type: string
+          description: Preferred location to navigate after login.
+          example: /play
+        user:
+          $ref: '#/components/schemas/User'
+    ErrorResponse:
+      type: object
+      required:
+        - ok
+        - error
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+    MeResponse:
+      type: object
+      required:
+        - authenticated
+        - user
+      properties:
+        authenticated:
+          type: boolean
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        player:
+          $ref: '#/components/schemas/PlayerSnapshot'

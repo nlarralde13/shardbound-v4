@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "pools": [
+    {
+      "id": "goblins_lowlands",
+      "levelRange": [1, 5],
+      "backdropTag": "lowlands",
+      "weights": [
+        { "mobId": "mobs/goblins/goblin_thug",      "w": 40 },
+        { "mobId": "mobs/goblins/goblin_cutpurse",  "w": 25 },
+        { "mobId": "mobs/goblins/goblin_hunter",    "w": 20 },
+        { "mobId": "mobs/goblins/goblin_shaman",    "w": 10 },
+        { "mobId": "mobs/goblins/goblin_brawler",   "w": 5  }
+      ],
+      "affixes": [
+        { "tag": "night_raid", "chance": 0.15, "mods": { "evasionPct": 5 } }
+      ]
+    },
+    {
+      "id": "goblins_lowlands_boss",
+      "levelRange": [4, 6],
+      "backdropTag": "lowlands",
+      "fixed": [
+        { "mobId": "mobs/goblins/goblin_chief", "count": 1 },
+        { "mobId": "mobs/goblins/goblin_brawler", "count": 2 }
+      ]
+    }
+  ]
+}

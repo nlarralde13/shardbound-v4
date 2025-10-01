@@ -1,0 +1,49 @@
+# models.py
+from datetime import datetime, date
+import bcrypt
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+class User(db.Model):
+    __tablename__ = "users"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    username     = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    email        = db.Column(db.String(120), unique=True, nullable=True)
+    first_name   = db.Column(db.String(80), nullable=True)
+    last_name    = db.Column(db.String(80), nullable=True)
+    password_hash= db.Column(db.String(128), nullable=False)
+    birthday     = db.Column(db.Date, nullable=True)   # ← keep existing field
+
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # one-to-one Player relationship (optional for now, but useful for character creation)
+    player       = db.relationship("Player", back_populates="user", uselist=False)
+
+    @staticmethod
+    def hash_password(plaintext: str) -> str:
+        return bcrypt.hashpw(plaintext.encode(), bcrypt.gensalt()).decode()
+
+    def check_password(self, plaintext: str) -> bool:
+        return bcrypt.checkpw(plaintext.encode(), self.password_hash.encode())
+
+    def __repr__(self):
+        return f"<User {self.username}>"
+
+class Player(db.Model):
+    __tablename__ = "players"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    user_id          = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False)
+
+    class_id         = db.Column(db.String(32), nullable=False)
+    gender           = db.Column(db.String(8),  nullable=False, default="male")
+    display_name     = db.Column(db.String(64))
+    onboarding_stage = db.Column(db.String(32))
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user             = db.relationship("User", back_populates="player")
+
+    def __repr__(self):
+        return f"<Player user_id={self.user_id} class={self.class_id}>"

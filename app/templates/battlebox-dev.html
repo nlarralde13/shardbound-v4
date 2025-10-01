@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shardbound – Battlebox</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root{
+      --bg:#0b111b;
+      --panel:#0f1420;
+      --line:#2a3242;
+      --text:#dbe3f0;
+      --muted:#92a0b6;
+      --accent:#7a4f27; /* retro touch */
+    }
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* ===== Layout Grid ===== */
+    .wrap{
+      display:grid;
+      grid-template-columns: 240px 1fr 280px;  /* desktop: 3 columns */
+      gap:12px; padding:12px; box-sizing:border-box; height:100vh;
+    }
+
+    /* 2 columns (tablet) */
+    @media (max-width: 1100px){
+      .wrap{ grid-template-columns: 300px 1fr; }
+      .panel.right{ grid-column: 1 / -1; } /* Enemy panel drops beneath viewer, full width */
+      .panel.center{ min-height: 52vh; }
+    }
+
+    /* 1 column (mobile portrait) */
+    @media (max-width: 720px){
+      .wrap{ grid-template-columns: 1fr; }
+      .panel{ order: initial; }
+      .panel.center{ min-height: 50vh; }
+    }
+
+    /* ===== Panels ===== */
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:10px;
+      padding:10px;
+      display:flex; flex-direction:column;
+      min-height: 0; /* allow inner scrolls */
+    }
+    .panel h2{
+      margin:0 0 10px; font-size:16px; font-weight:700; color:#f2f6ff;
+      letter-spacing:.3px
+    }
+    .panel .footer{
+      margin-top:auto; color:var(--muted); font-size:12px
+    }
+    .panel.center{ display:flex; flex-direction:column; }
+    .list{
+      background:#0c121d; border:1px solid var(--line);
+      border-radius:8px; padding:8px; overflow:auto; min-height:0;
+    }
+    .controls{ display:flex; gap:8px; align-items:center; margin:6px 0; flex-wrap:wrap; }
+
+    input[type="text"], input[type="number"], select{
+      background:#141b2a; border:1px solid var(--line); color:var(--text);
+      border-radius:8px; padding:6px 8px; outline:none;
+    }
+    button{
+      background:#141b2a; color:var(--text); border:1px solid var(--line);
+      border-radius:8px; padding:6px 10px; cursor:pointer;
+    }
+    button:hover{ border-color:#3a475f }
+
+    /* Scene viewport */
+    #sceneMount{
+      position:relative; flex:1 1 auto; min-height: 56vh;
+      background:#0b111b; border:1px solid var(--line); border-radius:8px; overflow:hidden;
+    }
+
+    /* Enemy list items */
+    .group{
+      border:1px solid var(--line); border-radius:8px; margin:8px 0; overflow:hidden;
+    }
+    .group summary{
+      list-style:none; cursor:pointer; padding:8px 10px;
+      background:#111827; color:#cfe0ff; border-bottom:1px solid var(--line);
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .group summary::-webkit-details-marker{ display:none; }
+    .group .items{ padding:6px 8px; }
+    .enemy-item{
+      display:flex; justify-content:space-between; align-items:center;
+      padding:6px 8px; border-radius:6px; cursor:pointer;
+    }
+    .enemy-item:hover{ background:#0f1a2b; }
+    .enemy-path{ color:var(--muted); font-size:12px; }
+
+    /* Tiny badge (user + logout) */
+    .badge{
+      position:fixed; top:8px; right:12px; z-index:9999;
+      display:none; align-items:center; gap:8px;
+      padding:6px 10px; background:var(--panel); border:1px solid var(--line);
+      border-radius:999px; color:#b9c3d5; box-shadow:0 2px 10px rgba(0,0,0,.25);
+      font-size:12px;
+    }
+
+    /* Retro accent title rule */
+    .rule{ height:1px; background:linear-gradient(to right, transparent, #66452d, transparent); margin:8px 0 10px }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT COLUMN -->
+    <div class="panel left">
+      <h2>Player Class</h2>
+      <div class="list" id="classList"></div>
+
+      <div class="controls">
+        <label>Level
+          <input type="number" id="levelInput" min="1" value="1" style="width:80px">
+        </label>
+        <button id="fightBtn">Fight ▶</button>
+      </div>
+
+      <div class="rule"></div>
+
+      <div class="controls" style="width:100%">
+        <label style="display:flex; gap:8px; align-items:center; width:100%;">
+          <span style="white-space:nowrap">Background</span>
+          <select id="bgSelect"></select>
+          <input id="bgCustom" placeholder="filename.png or full URL"
+                 style="flex:1; min-width:160px" />
+          <button id="bgApply">Apply</button>
+          <button id="bgClear">Clear</button>
+        </label>
+      </div>
+
+      <div class="footer">Uses class catalogs from <code>/static/catalog/classes</code>.</div>
+    </div>
+
+    <!-- CENTER COLUMN (Viewer) -->
+    <div class="panel center">
+      <h2>Battle Viewer</h2>
+      <div id="sceneMount"></div>
+      <!-- <div id="sceneOverlay"></div> -->
+    </div>
+
+    <!-- RIGHT COLUMN (Enemies) -->
+    <div class="panel right">
+      <h2>Enemy</h2>
+      <div class="controls" style="margin-bottom:6px">
+        <input type="text" id="enemyFilter" placeholder="Search enemies…" style="flex:1">
+        <button id="enemyRefresh">↻</button>
+      </div>
+      <div class="list" id="enemyList" aria-live="polite"></div>
+      <div class="footer">Loaded from <code>/static/catalog/mob_manifest.json</code>.</div>
+    </div>
+  </div>
+
+  <!-- User badge injected by script -->
+  <div class="badge" id="userBadge"></div>
+
+  <!-- Auth gate, responsive wiring, and manifest-driven enemy list -->
+  <script type="module">
+    // ===== Auth gate & lazy import =====
+    const badge = document.getElementById('userBadge');
+    try{
+      const meRes = await fetch('/api/me', { credentials:'include' });
+      const me = await meRes.json();
+      if(!me.user){ location.href = '/login'; throw new Error('no-session'); }
+      badge.innerHTML = `👤 ${me.user.username}
+        <button id="logoutBtn" title="Logout">Logout</button>`;
+      badge.style.display = 'inline-flex';
+      document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+        await fetch('/api/logout', { method:'POST', credentials:'include' });
+        location.href = '/login';
+      });
+
+      // Only load the heavy sandbox once authenticated
+      await import('/static/js/sandbox/battleSandbox.js');
+    }catch(_e){ /* redirected; nothing to do */ }
+
+    // ===== Background persistence (unchanged behavior) =====
+    const bgSelect  = document.getElementById('bgSelect');
+    const bgCustom  = document.getElementById('bgCustom');
+    const bgApply   = document.getElementById('bgApply');
+    const bgClear   = document.getElementById('bgClear');
+    const scene     = document.getElementById('sceneMount');
+
+    // Populate a few example backgrounds; adjust to your asset set
+    const builtIns = [
+      {label:'— None —', value:''},
+      {label:'Town Lowlands', value:'/static/assets/ui/town/town_hub_1080x1920.png'},
+      {label:'Job Board', value:'/static/assets/ui/jobboard/job_board_1080x1920.png'}
+    ];
+    for(const opt of builtIns){
+      const o=document.createElement('option'); o.value=opt.value; o.textContent=opt.label; bgSelect.appendChild(o);
+    }
+
+    function applyBg(url){
+      scene.style.background = url ? `center/cover no-repeat url("${url}")` : '#0b111b';
+      localStorage.setItem('battle_bg', url || '');
+    }
+    applyBg(localStorage.getItem('battle_bg') || '');
+
+    bgApply?.addEventListener('click', () => {
+      const url = bgCustom.value.trim() || bgSelect.value;
+      applyBg(url);
+    });
+    bgClear?.addEventListener('click', () => {
+      bgCustom.value=''; bgSelect.value='';
+      applyBg('');
+    });
+
+    // ===== Enemy manifest wiring =====
+    const enemyList   = document.getElementById('enemyList');
+    const enemyFilter = document.getElementById('enemyFilter');
+    const enemyRefresh= document.getElementById('enemyRefresh');
+
+    async function fetchJSON(url){
+      const res = await fetch(url, { credentials:'same-origin' });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function normalizeManifest(json){
+      // We accept multiple shapes and normalize to: [{family, name, path}]
+      const out = [];
+      const pushPath = (p) => {
+        if(!p || typeof p !== 'string') return;
+        const cleaned = p.replace(/^\/+|\.json$/g,''); // strip leading slash and .json
+        const parts = cleaned.split('/');
+        // Try to infer family from path like 'static/catalog/mobs/goblins/goblin_thug'
+        const gobIdx = parts.lastIndexOf('mobs');
+        const after = gobIdx >= 0 ? parts.slice(gobIdx+1) : parts;
+        const family = after.length >= 2 ? after[0] : 'misc';
+        const name = after[after.length-1];
+        out.push({ family, name, path: cleaned.endsWith('.json') ? cleaned : cleaned + '.json' });
+      };
+
+      if (Array.isArray(json)) {
+        json.forEach(pushPath);
+      } else if (json && Array.isArray(json.mobs)) {
+        json.mobs.forEach(pushPath);
+      } else if (json && typeof json === 'object') {
+        // Object of arrays OR object with {path:...} entries
+        for (const [k,v] of Object.entries(json)) {
+          if (Array.isArray(v)) {
+            v.forEach(pushPath);
+          } else if (v && typeof v === 'object') {
+            // common shapes: { path: "static/catalog/mobs/goblins/goblin_thug.json" }
+            if (typeof v.path === 'string') pushPath(v.path);
+            // or { files: [...] }
+            if (Array.isArray(v.files)) v.files.forEach(pushPath);
+          }
+        }
+      }
+      // Deduplicate
+      const seen = new Set();
+      return out.filter(e => {
+        const key = e.path;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function groupByFamily(entries){
+      const map = new Map();
+      for (const e of entries){
+        if(!map.has(e.family)) map.set(e.family, []);
+        map.get(e.family).push(e);
+      }
+      // sort families and names
+      for (const list of map.values()){
+        list.sort((a,b) => a.name.localeCompare(b.name));
+      }
+      return new Map([...map.entries()].sort((a,b)=> a[0].localeCompare(b[0])));
+    }
+
+    function renderEnemies(entries, filterTerm=''){
+      enemyList.innerHTML = '';
+      const term = filterTerm.trim().toLowerCase();
+      const filtered = term
+        ? entries.filter(e => e.name.toLowerCase().includes(term) || e.family.toLowerCase().includes(term))
+        : entries;
+
+      const grouped = groupByFamily(filtered);
+      if(grouped.size === 0){
+        const empty = document.createElement('div');
+        empty.style.color = 'var(--muted)';
+        empty.style.padding = '8px';
+        empty.textContent = 'No enemies match your search.';
+        enemyList.appendChild(empty);
+        return;
+      }
+
+      for(const [family, list] of grouped){
+        const details = document.createElement('details');
+        details.className = 'group';
+        details.open = true;
+
+        const summary = document.createElement('summary');
+        summary.innerHTML = `<strong>${family}</strong><span style="color:var(--muted)"> ${list.length}</span>`;
+        details.appendChild(summary);
+
+        const items = document.createElement('div');
+        items.className = 'items';
+
+        list.forEach(e => {
+          const row = document.createElement('div');
+          row.className = 'enemy-item';
+          row.title = e.path;
+
+          const left = document.createElement('div');
+          left.textContent = e.name.replace(/_/g,' ');
+          const right = document.createElement('div');
+          right.className = 'enemy-path';
+          right.textContent = e.path.split('/').slice(-2).join('/');
+
+          row.appendChild(left);
+          row.appendChild(right);
+
+          row.addEventListener('click', () => {
+            // TODO: fire into your sandbox selection, e.g. window.selectEnemy(e.path)
+            // For now, we stash to localStorage for the sandbox to read.
+            localStorage.setItem('battle_enemy_path', e.path);
+            // tastefully notify
+            right.textContent = '✓ selected';
+            setTimeout(()=> right.textContent = e.path.split('/').slice(-2).join('/'), 800);
+          });
+
+          items.appendChild(row);
+        });
+
+        details.appendChild(items);
+        enemyList.appendChild(details);
+      }
+    }
+
+    let cachedEntries = [];
+    async function loadEnemies(){
+      try{
+        const manifest = await fetchJSON('/static/catalog/mob_manifest.json');
+        cachedEntries = normalizeManifest(manifest);
+        renderEnemies(cachedEntries, enemyFilter.value);
+      }catch(err){
+        enemyList.innerHTML = `<div style="color:#ffb4b4; padding:8px">
+          Failed to load mob manifest: ${err?.message || err}
+        </div>`;
+      }
+    }
+
+    enemyFilter.addEventListener('input', () => renderEnemies(cachedEntries, enemyFilter.value));
+    enemyRefresh.addEventListener('click', loadEnemies);
+
+    // boot
+    loadEnemies();
+
+    // ===== (Optional) Hook class list and fightBtn with your sandbox if needed =====
+    // Here we only keep placeholders; your existing battleSandbox.js likely wires these.
+    const fightBtn = document.getElementById('fightBtn');
+    fightBtn?.addEventListener('click', () => {
+      // Example: window.startBattle();
+      // Left intentionally light—your sandbox owns battle start logic.
+    });
+  </script>
+</body>
+</html>

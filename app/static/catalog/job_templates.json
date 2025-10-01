@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "gob_thug_raid",
+      "title": "Goblin Thug Raid",
+      "blurb": "Clear out thugs harassing travelers near the old bridge.",
+      "levelBand": { "relative": true, "minDelta": -1, "maxDelta": 2 },
+      "guildTag": "militia",
+      "enemyPoolId": "goblins_lowlands",
+      "nodeWeights": { "Fight": 5, "Explore": 2, "Loot": 2, "DeadEnd": 1 },
+      "length": { "min": 3, "max": 5 },
+      "rewardsBase": { "xp": [12, 20], "gold": [15, 30], "dropTableId": "lowlands_common" },
+      "rarity": "common",
+      "flags": {}
+    },
+    {
+      "id": "gob_cutpurse_trouble",
+      "title": "Cutpurse Trouble",
+      "blurb": "Chase off cutpurses lurking along the market road.",
+      "levelBand": { "relative": true, "minDelta": 0, "maxDelta": 2 },
+      "guildTag": "militia",
+      "enemyPoolId": "goblins_lowlands",
+      "nodeWeights": { "Explore": 3, "Fight": 4, "Loot": 2, "DeadEnd": 1 },
+      "length": { "min": 3, "max": 4 },
+      "rewardsBase": { "xp": [15, 24], "gold": [20, 40], "dropTableId": "lowlands_common" },
+      "rarity": "common",
+      "flags": { "coinBias": true }
+    },
+    {
+      "id": "gob_hunter_ambush",
+      "title": "Hunter Ambush",
+      "blurb": "Stop goblin hunters attacking travelers at dusk.",
+      "levelBand": { "relative": true, "minDelta": 1, "maxDelta": 3 },
+      "guildTag": "hunters",
+      "enemyPoolId": "goblins_lowlands",
+      "nodeWeights": { "Fight": 6, "Explore": 1, "Loot": 2, "DeadEnd": 1 },
+      "length": { "min": 3, "max": 5 },
+      "rewardsBase": { "xp": [20, 30], "gold": [25, 45], "dropTableId": "lowlands_uncommon" },
+      "rarity": "uncommon",
+      "flags": { "itemTagHint": "bow" }
+    },
+    {
+      "id": "gob_chiefs_bounty",
+      "title": "Chief’s Bounty",
+      "blurb": "The militia posted a reward on the goblin chief.",
+      "levelBand": { "absolute": true, "min": 4, "max": 5 },
+      "guildTag": "militia",
+      "enemyPoolId": "goblins_lowlands_boss",
+      "nodeWeights": { "Fight": 8, "Explore": 0, "Loot": 1, "DeadEnd": 0 },
+      "length": { "min": 3, "max": 3 },
+      "rewardsBase": { "xp": [40, 60], "gold": [60, 90], "dropTableId": "lowlands_rare" },
+      "rarity": "boss",
+      "flags": { "requiresFavor": { "guild": "militia", "min": 100 } }
+    }
+  ]
+}

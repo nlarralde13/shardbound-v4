@@ -1,0 +1,224 @@
+/* ===== Design tokens ====================================================== */
+:root{
+  --bg:#0e0f12; --card:#16181d; --ink:#e8edf2; --muted:#9aa3ad; --accent:#5cc8ff;
+  --good:#3ad29f; --warn:#ffcc66; --bad:#ff6b6b; --frame:#242833; --line:#2a2f3a;
+  --shadow:0 6px 20px rgba(0,0,0,.35);
+
+  /* HUD control (used for clipping/scaling bottom UI inside the viewer) */
+  --hud-height: 240px;      /* approx height of bottom HUD to clip when hidden */
+  --viewer-max-w: 1400px;   /* center viewer size limits */
+  --viewer-max-h: 900px;
+}
+
+/* ===== Base =============================================================== */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  display:flex; flex-direction:column;
+}
+
+/* ===== Top Banner ========================================================= */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:.75rem 1rem; background:linear-gradient(180deg,#111318,#0f1116);
+  border-bottom:1px solid var(--line); box-shadow:var(--shadow);
+  position:sticky; top:0; z-index:50;
+}
+.topbar .title{font-weight:700; letter-spacing:.3px}
+.topbar .stage{font-size:.9rem; color:var(--muted)}
+.topbar .actions{display:flex; gap:.5rem}
+.ghost{
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  padding:.45rem .7rem; border-radius:.6rem; cursor:pointer;
+}
+.ghost:hover{border-color:var(--accent); color:var(--accent)}
+.ghost[aria-pressed="true"]{border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 2px rgba(92,200,255,.12) inset;}
+
+/* ===== Main Layout (Sidebars + Center) =================================== */
+.layout{
+  flex:1 1 auto; min-height:0;
+  display:grid; gap:10px; padding:10px;
+  grid-template-columns: 280px minmax(0,1fr) 320px;
+  grid-template-rows: minmax(0,1fr);
+}
+.panel{
+  background:var(--card); border:1px solid var(--frame); border-radius:14px;
+  box-shadow:var(--shadow); min-height:0; display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.panel .panel-header{
+  padding:.6rem .85rem; border-bottom:1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+  background:linear-gradient(180deg,#151822,#121520);
+}
+.panel .panel-header h3{margin:0; font-size:1rem}
+.panel .panel-body{flex:1 1 auto; min-height:0; overflow:auto; padding:.85rem}
+.panel-body--tight{padding:.6rem}
+
+/* Left Sidebar (Character / Party) */
+#leftSidebar .card{
+  background:#12151b; border:1px solid var(--line); border-radius:10px; padding:.75rem; margin-bottom:.75rem;
+}
+.char-head{display:flex; align-items:center; gap:.75rem;}
+.char-portrait{width:52px; height:52px; background:#0f1218; border:1px solid var(--line); border-radius:8px;}
+.char-name{font-weight:700;}
+.char-class{color:var(--muted);}
+.stat-grid{margin-top:.6rem; display:grid; gap:.25rem;}
+.stat{display:flex; justify-content:space-between; color:var(--muted); font-size:.9rem}
+
+/* ===== Center: BattleViewer Mount ======================================== */
+#centerViewport{display:flex; align-items:center; justify-content:center; position:relative;}
+#battleviewer-root{
+  position:relative;
+  width:100%; height:100%;
+  /* NEW: keep viewer tidy and responsive */
+  max-width: var(--viewer-max-w);
+  max-height: min(var(--viewer-max-h), 75vh);
+  margin: 0 auto;
+
+  background:#0b0d11 radial-gradient(1200px 700px at 50% 0%, rgba(92,200,255,.08), transparent);
+  border:1px solid var(--line); border-radius:12px; display:grid; place-items:center;
+  overflow:hidden;             /* important: clip any overflow */
+}
+.loading-skeleton{
+  width:88%; height:88%; border:2px dashed #2c3440; border-radius:12px; display:grid; place-items:center; color:#7e8a98;
+}
+
+/* Internal stage wrapper (created by viewer embed) */
+#battleviewer-root .viewer-stage{
+  position:relative; width:100%; height:100%;
+  /* make sure any fixed-width children scale down gracefully */
+  display:flex; align-items:stretch; justify-content:center;
+}
+
+/* === HUD controls (class-agnostic) ======================================= */
+/* Compact mode: shrink the whole viewer slightly to make space */
+#battleviewer-root.hud-compact .viewer-stage{
+  transform: scale(.95);
+  transform-origin: center bottom;
+}
+
+/* Hidden mode: clip bottom portion where HUD lives.
+   Works even if HUD uses unknown classes or absolute/fixed positioning. */
+#battleviewer-root.hud-hidden .viewer-stage{
+  /* clip off bottom HUD area */
+  clip-path: inset(0 0 var(--hud-height) 0);
+}
+
+/* If your HUD uses global classes, we also hide those when hud-hidden is on body */
+body.hud-hidden .battle-hud,
+body.hud-hidden .actor-panels,
+body.hud-hidden .actorPanel,
+body.hud-hidden .unit-panels,
+body.hud-hidden .unitPanel,
+body.hud-hidden .combat-ui,
+body.hud-hidden .bottom-ui,
+body.hud-hidden .battle-footer {
+  display:none !important;
+}
+
+/* ===== Right Sidebar (Actions / Log) ===================================== */
+.actions-body{display:flex; flex-direction:column; gap:.75rem;}
+.btn{
+  width:100%; padding:.55rem .8rem; border:1px solid var(--line); background:#12161d; color:var(--ink); border-radius:.6rem; cursor:pointer;
+}
+.btn:hover{border-color:var(--accent); color:var(--accent)}
+.log{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background:#0d1016; border:1px solid var(--line); border-radius:10px; padding:.6rem; height:220px; overflow:auto;
+}
+.card-title{font-weight:700; margin:.6rem 0 .4rem;}
+.muted{color:var(--muted);}
+
+/* ===== Bottom Console ===================================================== */
+.bottombar{
+  border-top:1px solid var(--line); background:#0f1218; padding:.4rem .75rem;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color:#b7c0ca;
+}
+.bottombar .row{display:flex; gap:1rem; white-space:nowrap; overflow:auto}
+.tag{border:1px solid var(--line); border-radius:.5rem; padding:.2rem .5rem; font-size:.85rem}
+
+/* ===== Collapsible Helpers =============================================== */
+.is-collapsed{display:none !important;}
+
+/* ===== Responsive ========================================================= */
+@media (max-width:1200px){
+  .layout{grid-template-columns: 260px minmax(0,1fr) 300px;}
+}
+@media (max-width:980px){
+  .layout{grid-template-columns: minmax(0,1fr) 320px;}
+  #leftSidebar{display:none;}
+}
+@media (max-width:700px){
+  .layout{grid-template-columns: minmax(0,1fr);}
+  #rightSidebar{display:none;}
+}
+
+
+/* ===== Character Creation Overlay ======================================== */
+.no-scroll { overflow: hidden; }
+.cc-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: grid; place-items: center; z-index: 1000;
+}
+.cc-modal {
+  width: min(1100px, 92vw); max-height: 90vh; overflow: hidden;
+  background: #12151b; border:1px solid var(--frame); border-radius: 16px;
+  box-shadow: var(--shadow); display:flex; flex-direction:column;
+}
+.cc-header { display:flex; justify-content:space-between; align-items:center;
+  padding: .9rem 1rem; border-bottom:1px solid var(--line); background:linear-gradient(180deg,#151822,#121520);
+}
+.cc-header h2{ margin:0; font-size:1.1rem; }
+.cc-close{ background:transparent; color:var(--ink); border:1px solid var(--line); padding:.35rem .6rem; border-radius:.5rem; cursor:pointer;}
+.cc-close:hover{ border-color:var(--accent); color:var(--accent); }
+
+.cc-sub{ padding: .75rem 1rem; color: var(--muted); }
+
+.cc-grid{
+  padding: .5rem 1rem 1rem; display:grid; gap:.75rem;
+  grid-template-columns: repeat(3, 1fr); /* 3 x 2 grid */
+}
+@media (max-width: 760px){
+  .cc-grid{ grid-template-columns: repeat(2, 1fr); }
+}
+.cc-tile{
+  border:1px solid var(--line); background:#0f1218; color:var(--ink);
+  border-radius:12px; cursor:pointer; padding:0; text-align:left;
+}
+.cc-tile:hover{ border-color:var(--accent); }
+.cc-tile.is-selected{ outline:2px solid var(--accent); }
+.cc-tile-inner{ padding:.75rem; display:grid; gap:.4rem; }
+.cc-tile-portrait{
+  width:100%; aspect-ratio:1/1; background:#0b0d11 center/cover no-repeat; border:1px solid var(--frame); border-radius:10px;
+}
+.cc-tile-name{ font-weight:700; }
+.cc-tile-tag{ color:var(--muted); font-size:.9rem; min-height:1.1rem; }
+
+.cc-preview{
+  display:flex; gap:1rem; padding: 0 1rem 1rem; align-items:stretch;
+}
+.cc-preview-portrait{
+  width: 148px; aspect-ratio:1/1; background:#0b0d11 center/cover no-repeat; border:1px solid var(--frame); border-radius:10px; flex:0 0 auto;
+}
+.cc-preview-body{ flex:1 1 auto; min-width:0; }
+.cc-preview-title{ font-weight:800; margin-top:.25rem; }
+.cc-preview-tagline{ color:var(--muted); margin-bottom:.5rem; }
+.cc-preview-list{ display:grid; grid-template-columns: repeat(3, 1fr); gap:.75rem; }
+.cc-muted{ color:var(--muted); }
+.cc-stats{ display:grid; gap:.25rem; }
+.cc-stat-row{ display:flex; justify-content:space-between; color:var(--muted); }
+
+.cc-footer{
+  margin-top:auto; padding:.75rem 1rem; border-top:1px solid var(--line);
+  display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+  background: linear-gradient(180deg,#121520, #0f1218);
+}
+.cc-gender{ display:flex; align-items:center; gap:.75rem; color:var(--muted); }
+.cc-actions{ display:flex; gap:.5rem; }
+.cc-btn{ border:1px solid var(--line); background:#12161d; color:var(--ink); padding:.55rem .9rem; border-radius:.6rem; cursor:pointer; }
+.cc-btn:hover{ border-color:var(--accent); color:var(--accent); }
+.cc-btn.primary{ background:#142034; border-color:#1b2a46; }
+.cc-btn.primary:disabled{ opacity:.6; cursor:not-allowed; }

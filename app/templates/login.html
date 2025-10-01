@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shardbound – Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Courier New", monospace;
+      background: url("/static/assets/ui/parchment_bg.png") center/cover no-repeat;
+      color: #2b1d0e;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .login-box {
+      background: rgba(255, 248, 220, 0.9);
+      border: 4px solid #5c3a1e;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+      width: 90%;
+      max-width: 400px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 10px;
+      color: #4a2f14;
+      text-shadow: 1px 1px #fff;
+    }
+
+    .tab-buttons {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 15px;
+    }
+
+    .tab-buttons button {
+      flex: 1;
+      margin: 0 5px;
+      background: #5c3a1e;
+      color: #fff;
+      font-size: 1.1em;
+      border: 2px solid #2b1d0e;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .tab-buttons button:hover {
+      background: #7a4f27;
+    }
+
+    form {
+      display: none;
+      flex-direction: column;
+    }
+
+    form.active {
+      display: flex;
+    }
+
+    input {
+      margin: 6px 0;
+      padding: 10px;
+      font-size: 1em;
+      border: 2px solid #5c3a1e;
+      border-radius: 6px;
+    }
+
+    .submit-btn {
+      margin-top: 10px;
+      background: #7a4f27;
+      color: #fff;
+      font-size: 1.1em;
+      border: 2px solid #2b1d0e;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .submit-btn:hover {
+      background: #9a6232;
+    }
+
+    .error {
+      color: darkred;
+      font-size: 0.9em;
+      margin-top: 5px;
+      min-height: 1em;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>Welcome to Shardbound</h1>
+
+    <div class="tab-buttons">
+      <button type="button" data-tab="login">Login</button>
+      <button type="button" data-tab="signup">Signup</button>
+    </div>
+
+    <!-- Login Form -->
+    <form id="login-form" data-form="login">
+      <input type="text" id="login-username" placeholder="Username" required />
+      <input type="password" id="login-password" placeholder="Password" required />
+      <button class="submit-btn" type="submit">Enter</button>
+      <div id="login-error" class="error"></div>
+    </form>
+
+    <!-- Signup Form -->
+    <form id="signup-form" data-form="signup">
+      <input type="text" id="signup-username" placeholder="Username" required />
+      <input type="text" id="signup-first" placeholder="First Name" required />
+      <input type="text" id="signup-last" placeholder="Last Name" required />
+      <input type="email" id="signup-email" placeholder="Email" required />
+      <input type="password" id="signup-password" placeholder="Choose Password" required />
+      <button class="submit-btn" type="submit">Create Account</button>
+      <div id="signup-error" class="error"></div>
+    </form>
+  </div>
+
+  <!-- External script with all logic -->
+  <script type="module" src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>

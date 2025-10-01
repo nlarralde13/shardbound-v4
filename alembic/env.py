@@ -29,7 +29,7 @@ def get_url():
 # Flask-Migrate also sets `current_app.extensions['migrate'].db.metadata`,
 # but importing from models is more explicit and resilient.
 try:
-    from app.models import db
+    from app import db
     target_metadata = db.metadata
 except Exception as ex:
     logger.error("Failed to import db.metadata from models.py: %s", ex)

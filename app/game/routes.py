@@ -11,7 +11,8 @@ except Exception:
         return fn
     current_user = None
 
-from app.models import db, Player
+from app import db
+from app.models import Player
 
 game_bp = Blueprint("game", __name__, url_prefix="")
 

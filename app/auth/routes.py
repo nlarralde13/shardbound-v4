@@ -15,7 +15,8 @@ from flask import (
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
-from app.models import db, User
+from app import db
+from app.models import User
 from .service import (
     authenticate,
     end_session,

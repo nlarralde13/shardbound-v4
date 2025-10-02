@@ -5,13 +5,12 @@
   <title>Shardbound · Play</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- Play styles -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/play.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/play.css') }}?v=20251001">
 </head>
 
 <body>
   <!-- ======= TOP ACCOUNT BANNER ======= -->
   <header class="sb-navbar">
-    <!-- Brand goes to login page for now; change to main.index if you prefer -->
     <a class="sb-logo sb-brand" href="{{ url_for('auth.login_page') }}" aria-label="Home">
       <span class="mark" aria-hidden="true"></span>
       <span>Shardbound</span>
@@ -73,7 +72,6 @@
       </div>
     </div>
 
-    <!-- Hidden logout form (POST) -->
     <form id="logoutForm" action="{{ url_for('auth.logout') }}" method="post" style="display:none;">
       {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
     </form>
@@ -82,6 +80,7 @@
   <!-- ======= MAIN CONTENT ======= -->
   <main id="app-root">
     <div class="play-layout" id="playLayout">
+      <!-- LEFT PANEL -->
       <section class="panel panel-left" aria-labelledby="charPanelHeading">
         <header class="panel-header">
           <h2 id="charPanelHeading">Character</h2>
@@ -94,16 +93,13 @@
             <p id="charTitle" class="char-title">Create a character to begin</p>
             <dl class="char-stats">
               <div>
-                <dt>Class</dt>
-                <dd id="charClass">—</dd>
+                <dt>Class</dt><dd id="charClass">—</dd>
               </div>
               <div>
-                <dt>XP</dt>
-                <dd id="charXP">0</dd>
+                <dt>XP</dt><dd id="charXP">0</dd>
               </div>
               <div>
-                <dt>Power</dt>
-                <dd id="charPower">0</dd>
+                <dt>Power</dt><dd id="charPower">0</dd>
               </div>
             </dl>
           </div>
@@ -111,14 +107,89 @@
         <div class="char-log" id="charLog" aria-live="polite"></div>
       </section>
 
+      <!-- CENTER PANEL — board + layered battle HUD -->
       <section class="panel panel-center" aria-labelledby="battlePanelHeading">
         <header class="panel-header">
           <h2 id="battlePanelHeading">Battle Viewer</h2>
           <p class="panel-subtitle">Tutorial encounter</p>
         </header>
-        <div id="battleviewer-root" class="battle-shell" role="application" aria-label="Battle Viewer"></div>
+
+        <div id="battleviewer-root" class="battle-shell" role="application" aria-label="Battle Viewer">
+          <div id="battleviewer-canvas" class="battle-canvas" aria-hidden="false"></div>
+
+          <!-- Enemy HUD (top) -->
+          <div id="enemyHUD" class="hud hud-top" aria-live="polite">
+            <div class="hud-row">
+              <div class="hud-portrait enemy-portrait" id="enemyPortrait"></div>
+              <div class="hud-meta">
+                <div class="hud-name" id="enemyName">—</div>
+                <div class="bar hp">
+                  <div class="bar-fill" id="enemyHPFill" style="width:0%"></div>
+                  <div class="bar-text" id="enemyHPText">HP — / —</div>
+                </div>
+                <div class="bar shield">
+                  <div class="bar-fill" id="enemyShieldFill" style="width:0%"></div>
+                  <div class="bar-text" id="enemyShieldText">Shield —</div>
+                </div>
+                <div class="hud-tags" id="enemyTags"></div>
+              </div>
+              <div class="hud-side">
+                <div class="hud-stat"><span>ATK</span><strong id="enemyATK">—</strong></div>
+                <div class="hud-stat"><span>RES</span><strong id="enemyRES">—</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Battle Log (middle) -->
+          <div id="battleLog" class="battle-log" aria-live="polite" aria-relevant="additions text"></div>
+
+          <!-- Player HUD (bottom, above actions) -->
+          <div id="playerHUD" class="hud hud-bottom" aria-live="polite">
+            <div class="hud-row">
+              <div class="hud-portrait player-portrait" id="playerPortrait"></div>
+              <div class="hud-meta">
+                <div class="hud-name">
+                  <span id="playerName">—</span>
+                  <span class="hud-class" id="playerClass">—</span>
+                </div>
+                <div class="bar hp">
+                  <div class="bar-fill" id="playerHPFill" style="width:0%"></div>
+                  <div class="bar-text" id="playerHPText">HP — / —</div>
+                </div>
+                <div class="bar mp">
+                  <div class="bar-fill" id="playerMPFill" style="width:0%"></div>
+                  <div class="bar-text" id="playerMPText">MP — / —</div>
+                </div>
+                <div class="bar xp thin">
+                  <div class="bar-fill" id="playerXPFill" style="width:0%"></div>
+                  <div class="bar-text" id="playerXPText">XP —%</div>
+                </div>
+              </div>
+              <div class="hud-side">
+                <div class="hud-stat"><span>ATK</span><strong id="playerATK">—</strong></div>
+                <div class="hud-stat"><span>DEF</span><strong id="playerDEF">—</strong></div>
+                <div class="hud-stat"><span>SPD</span><strong id="playerSPD">—</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Bar (sticks to bottom) -->
+          <div id="actionBar" class="action-bar" role="toolbar" aria-label="Battle Actions">
+            <button class="hotkey" data-key="1" id="act1" aria-label="Action 1">1</button>
+            <button class="hotkey" data-key="2" id="act2" aria-label="Action 2">2</button>
+            <button class="hotkey" data-key="3" id="act3" aria-label="Action 3">3</button>
+            <button class="hotkey" data-key="4" id="act4" aria-label="Action 4">4</button>
+            <button class="hotkey" data-key="5" id="act5" aria-label="Action 5">5</button>
+            <div class="toolbar-gap"></div>
+            <button class="btn small" id="actItem">Item</button>
+            <button class="btn small" id="actDefend">Defend</button>
+            <button class="btn small" id="actRun">Run</button>
+            <button class="btn small primary" id="actEndTurn">End Turn ⏎</button>
+          </div>
+        </div>
       </section>
 
+      <!-- RIGHT PANEL -->
       <section class="panel panel-right" aria-labelledby="encountersHeading">
         <header class="panel-header">
           <h2 id="encountersHeading">Encounters</h2>
@@ -135,6 +206,7 @@
       </section>
     </div>
 
+    <!-- Bottom HUD chips -->
     <footer class="play-hud" role="status" aria-live="polite">
       <div class="hud-chip" id="hudNet">Network: —</div>
       <div class="hud-chip" id="hudUser">User: —</div>
@@ -144,7 +216,7 @@
       <div class="hud-chip" id="hudFPS">FPS: —</div>
     </footer>
 
-    <!-- Character Creation Modal (hidden by default) -->
+    <!-- Character Creation Modal -->
     <div id="charCreateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ccTitle">
       <div class="modal-backdrop" data-close="cc"></div>
       <div class="modal-panel" role="document">
@@ -158,12 +230,10 @@
             <label for="ccName">Name</label>
             <input id="ccName" name="name" type="text" minlength="2" maxlength="24" required />
           </div>
-
           <div class="form-row">
             <label for="ccTitleInput">Title (optional)</label>
             <input id="ccTitleInput" name="title" type="text" maxlength="32" placeholder="e.g., ‘the Unbound’" />
           </div>
-
           <div class="form-row">
             <label for="ccClass">Class</label>
             <select id="ccClass" name="class" required>
@@ -175,14 +245,10 @@
               <option value="Monk">Monk</option>
             </select>
           </div>
-
-          <!-- Portrait preview auto-updates based on class -->
           <div class="portrait-preview">
             <div id="ccPortrait" class="portrait-frame"></div>
           </div>
-
           <div id="ccError" class="form-error" role="alert" aria-live="assertive"></div>
-
           <footer class="modal-footer">
             <button type="submit" class="btn btn-primary" id="ccSubmit">Create Character</button>
             <button type="button" class="btn" id="ccCancel">Cancel</button>
@@ -192,6 +258,7 @@
     </div>
   </main>
 
+  <!-- host a few helpers for JS -->
   <script>
     window.__PLAY_APP__ = {
       battleRoot: document.getElementById('battleviewer-root'),
@@ -206,26 +273,14 @@
         console.log('[play]', message);
       },
       setStatus(key, value) {
-        const mapping = {
-          shard: 'hudShard',
-          coords: 'hudCoords',
-          biome: 'hudBiome',
-          fps: 'hudFPS',
-          net: 'hudNet',
-          user: 'hudUser'
-        };
-        const targetId = mapping[key] || null;
-        if (targetId) {
-          const el = document.getElementById(targetId);
-          if (el) {
-            el.textContent = value;
-          }
-        }
+        const mapping = { shard:'hudShard', coords:'hudCoords', biome:'hudBiome', fps:'hudFPS', net:'hudNet', user:'hudUser' };
+        const el = document.getElementById(mapping[key] || '');
+        if (el) el.textContent = value;
       }
     };
   </script>
 
   <!-- Page script -->
-  <script type="module" src="{{ url_for('static', filename='js/play.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/play.js') }}?v=20251001"></script>
 </body>
 </html>

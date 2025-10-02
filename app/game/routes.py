@@ -1,11 +1,19 @@
 # app/game/routes.py
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import csrf
 from ..models import Character, CharacterFlag, Player, db
 
 game_bp = Blueprint("game", __name__)
+
+
+@game_bp.get("/play")
+@login_required
+def play():
+    """Render the main gameplay view once the user is authenticated."""
+
+    return render_template("play.html")
 
 def _safe_username(u):
     # don’t assume your User model has `username`

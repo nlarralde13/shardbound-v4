@@ -1,9 +1,7 @@
 # app/__init__.py
 import os
 from datetime import timedelta
-from typing import Optional
-
-from flask import Flask
+from flask import Flask, redirect, request, url_for
 
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
@@ -66,7 +64,19 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         from .models import User
 
         login_manager.init_app(app)
-        login_manager.login_view = "auth.login"  # change if your route name differs
+        login_manager.login_view = "auth.login_page"
+
+        @login_manager.unauthorized_handler
+        def _redirect_to_login():
+            """Ensure unauthenticated visitors are sent to the login screen."""
+
+            if request.method in {"GET", "HEAD"}:
+                next_url = request.url
+            else:
+                next_url = request.referrer
+
+            params = {"next": next_url} if next_url else {}
+            return redirect(url_for("auth.login_page", **params))
 
         @login_manager.user_loader
         def load_user(user_id: str):

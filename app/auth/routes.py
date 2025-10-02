@@ -4,31 +4,35 @@ from datetime import date
 from http import HTTPStatus
 from typing import Any, Dict
 
-from flask import (
-    Blueprint,
-    jsonify,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
-from sqlalchemy import func
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash
 
-from app import db
+from app import csrf, db
 from app.models import User
 from .service import (
-    authenticate,
     end_session,
     me_payload,
     serialize_user,
-    start_session,
 )
 
 try:
-    from flask_login import current_user
+    from flask_login import current_user, login_user, logout_user
 except Exception:  # pragma: no cover - flask_login optional in some envs
     current_user = None
+    login_user = None
+    logout_user = None
+
+
+def _password_matches(user: User, candidate: str) -> bool:
+    """Validate plaintext passwords against stored hashes."""
+
+    try:
+        return check_password_hash(user.password_hash, candidate)
+    except ValueError:
+        # Legacy bcrypt hashes are supported for backwards compatibility.
+        return user.check_password(candidate)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="")
 
@@ -56,40 +60,56 @@ def logout():
 # ---------------------------------------------------------------------------
 # JSON API endpoints (CSRF exempt because they require credentials cookie)
 # ---------------------------------------------------------------------------
+@csrf.exempt
 @auth_bp.post("/api/login")
 def api_login():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
     if not isinstance(data, dict):
-        return _error_response(HTTPStatus.BAD_REQUEST, "Invalid JSON body.")
+        return jsonify(ok=False, error="invalid_payload"), HTTPStatus.BAD_REQUEST
 
-    username = (data.get("username") or "").strip()
+    identifier = (data.get("username") or data.get("email") or "").strip()
     password = (data.get("password") or "").strip()
 
-    if not username or not password:
-        return _error_response(
-            HTTPStatus.BAD_REQUEST,
-            "Username and password are required.",
-            errors={"username": "Required", "password": "Required"},
+    if not identifier or not password:
+        return jsonify(ok=False, error="missing_credentials"), HTTPStatus.BAD_REQUEST
+
+    user = None
+    if identifier:
+        identifier_lower = identifier.lower()
+        user = (
+            User.query.filter(
+                or_(
+                    func.lower(User.username) == identifier_lower,
+                    func.lower(User.email) == identifier_lower,
+                )
+            ).first()
         )
 
-    # TODO: hook rate limiting here (e.g. redis-based attempt counter)
+    if not user or not _password_matches(user, password):
+        return jsonify(ok=False, error="invalid_credentials"), HTTPStatus.UNAUTHORIZED
 
-    user = authenticate(username, password)
-    if not user:
-        return _error_response(HTTPStatus.UNAUTHORIZED, "Invalid credentials.")
+    if login_user:
+        login_user(user)
 
-    start_session(user)
-    response = {
-        "ok": True,
-        "user": serialize_user(user),
-        "redirect": url_for("game.play"),
-    }
-    return jsonify(response)
+    session.permanent = True
+    session["user"] = {"id": user.id, "username": user.username}
+    session["user_id"] = user.id
+    session["username"] = user.username
+    session.modified = True
+
+    payload = {"ok": True, "user": {"id": user.id, "username": user.username}}
+    return jsonify(payload), HTTPStatus.OK
 
 
+@csrf.exempt
 @auth_bp.post("/api/logout")
 def api_logout():
-    end_session()
+    if logout_user:
+        try:
+            logout_user()
+        except Exception:
+            pass
+    session.clear()
     return ("", HTTPStatus.NO_CONTENT)
 
 

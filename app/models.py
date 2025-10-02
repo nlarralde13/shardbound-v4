@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime, date
 import bcrypt
 from app import db
-
+from sqlalchemy import UniqueConstraint, ForeignKey
+from sqlalchemy.orm import relationship
 try:
     from flask_login import UserMixin
 except Exception:  # pragma: no cover - flask_login optional
@@ -27,6 +28,12 @@ class User(UserMixin, db.Model):
     # one-to-one Player relationship (optional for now, but useful for character creation)
     player       = db.relationship("Player", back_populates="user", uselist=False)
 
+    characters = db.relationship(
+        "Character",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     @staticmethod
     def hash_password(plaintext: str) -> str:
         return bcrypt.hashpw(plaintext.encode(), bcrypt.gensalt()).decode()
@@ -64,3 +71,47 @@ class Player(db.Model):
 
     def __repr__(self):
         return f"<Player user_id={self.user_id} class={self.class_id}>"
+
+
+class Character(db.Model):
+    __tablename__ = "characters"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    name = db.Column(db.String(50), nullable=False)
+    title = db.Column(db.String(100))
+    class_name = db.Column(db.String(20), nullable=False)  # Warrior, Mage, etc.
+
+    level = db.Column(db.Integer, default=1, nullable=False)
+    xp = db.Column(db.Integer, default=0, nullable=False)
+    power = db.Column(db.Integer, default=0, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # relationships
+    user = relationship("User", back_populates="characters")
+    flags = relationship("CharacterFlag", back_populates="character", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_character_user_name"),
+    )
+
+
+class CharacterFlag(db.Model):
+    __tablename__ = "character_flags"
+
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(db.Integer, ForeignKey("characters.id", ondelete="CASCADE"), nullable=False)
+
+    flag_name = db.Column(db.String(50), nullable=False)
+    value = db.Column(db.Boolean, default=False, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    character = relationship("Character", back_populates="flags")
+
+    __table_args__ = (
+        UniqueConstraint("character_id", "flag_name", name="uq_character_flag"),
+    )

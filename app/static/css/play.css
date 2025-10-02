@@ -245,3 +245,29 @@ main { padding: 16px; padding-bottom: 96px; }
   .sb-nav { display: none; }
   .sb-username { display: none; }
 }
+/* ====== Story layer (center panel narrative mode) ====== */
+.story-layer {
+  position: absolute; inset: 0; z-index: 10012; /* above HUDs (10010) but below action bar (10020) if you want */
+  display: grid; grid-template-rows: 1fr auto; gap: 16px;
+  background: #0e121a;
+  background-size: cover; background-position: center;
+  border-radius: 14px;
+}
+
+/* backdrop scrim for readability over images */
+.story-scrim { background: linear-gradient(180deg, rgba(9,11,16,.62), rgba(9,11,16,.35) 40%, rgba(9,11,16,.62)); display: grid; align-items: end; }
+
+/* story console */
+.story-console {
+  margin: 0 12px 12px; padding: 14px; border: 1px solid var(--sb-border); border-radius: 12px;
+  background: rgba(15,17,21,.9); box-shadow: var(--sb-shadow);
+  max-height: 40vh; overflow:auto; color: var(--sb-fg);
+  font-size: 14px; line-height: 1.5;
+}
+.story-console p { margin: 0 0 8px; }
+
+.story-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin: 0 12px 16px;
+}
+.story-actions .btn { padding: 10px 14px; }

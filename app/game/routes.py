@@ -1,87 +1,106 @@
-from __future__ import annotations
+# app/game/routes.py
+from flask import Blueprint, jsonify, request
+from flask_login import current_user, login_required
+from ..models import db, Character, CharacterFlag
 
-from http import HTTPStatus
+game_bp = Blueprint("game", __name__)
 
-from flask import Blueprint, jsonify, render_template, request
-try:
-    from flask_login import current_user, login_required
-except Exception:
-    # Fallback no-op decorator if flask_login not installed
-    def login_required(fn):
-        return fn
-    current_user = None
+def _safe_username(u):
+    # don’t assume your User model has `username`
+    return getattr(u, "username", None) or getattr(u, "email", None) or getattr(u, "name", None) or f"user:{u.id}"
 
-from app import db
-from app.models import Player
+def _serialize_character(c: Character):
+    if not c:
+        return None
+    return {
+        "id": c.id,
+        "name": c.name,
+        "title": c.title,
+        "class": c.class_name,
+        "level": c.level,
+        "xp": c.xp,
+        "power": c.power,
+    }
 
-game_bp = Blueprint("game", __name__, url_prefix="")
+def _flags_dict(character_id: int):
+    flags = CharacterFlag.query.filter_by(character_id=character_id).all()
+    return {f.flag_name: bool(f.value) for f in flags}
 
-@game_bp.get("/play")
-@login_required  # remove if you want play accessible without auth
-def play():
-    return render_template("play.html")
+# ---------------------- /api/me ----------------------
+# Return JSON; never throw; 401 when not authenticated.
+@game_bp.get("/api/me")
+def api_me():
+    try:
+        if not current_user or not getattr(current_user, "is_authenticated", False):
+            return jsonify({"authenticated": False}), 401
 
+        # 1 char per user (for now)
+        char = Character.query.filter_by(user_id=current_user.id).first()
+        data = {
+            "authenticated": True,
+            "user": {"id": current_user.id, "username": _safe_username(current_user)},
+            "character": _serialize_character(char),
+            "flags": _flags_dict(char.id) if char else {},
+        }
+        return jsonify(data), 200
+    except Exception as e:
+        # Log server-side and return JSON instead of an HTML 500 page
+        db.session.rollback()
+        print("[/api/me] error:", repr(e))
+        return jsonify({"error": "internal_error"}), 500
 
-ALLOWED_CLASSES = {"Warrior", "Mage", "Cleric", "Ranger", "Rogue", "Monk"}
-
-
+# ---------------------- /api/characters ----------------------
 @game_bp.post("/api/characters")
 @login_required
-def create_character():
-    proxy = current_user if current_user is not None else None
-    if proxy is None:
-        return ("", HTTPStatus.UNAUTHORIZED)
-
+def api_create_character():
     try:
-        user_obj = proxy._get_current_object()  # type: ignore[attr-defined]
-    except Exception:
-        user_obj = proxy
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        class_name = (data.get("class") or "").strip()
+        title = (data.get("title") or "").strip()
 
-    user_id = getattr(user_obj, "id", None)
-    if user_id is None:
-        return ("", HTTPStatus.UNAUTHORIZED)
+        if not name or not class_name:
+            return jsonify(error="Name and class are required."), 400
 
-    payload = request.get_json(silent=True) or {}
-    if not isinstance(payload, dict):
-        return jsonify({"ok": False, "error": "Invalid JSON body."}), HTTPStatus.BAD_REQUEST
+        existing = Character.query.filter_by(user_id=current_user.id).first()
+        if existing:
+            return jsonify(error="Character already exists."), 400
 
-    name = (payload.get("name") or "").strip()
-    title = (payload.get("title") or "").strip() or None
-    class_name = (payload.get("class") or "").strip()
-
-    errors: dict[str, str] = {}
-    if not name:
-        errors["name"] = "Name is required."
-    elif not (2 <= len(name) <= 24):
-        errors["name"] = "Name must be 2-24 characters."
-
-    if title and len(title) > 32:
-        errors["title"] = "Title must be 32 characters or fewer."
-
-    if class_name not in ALLOWED_CLASSES:
-        errors["class"] = "Choose a valid class."
-
-    if errors:
-        return jsonify({"ok": False, "errors": errors}), HTTPStatus.BAD_REQUEST
-
-    existing = Player.query.filter_by(user_id=user_id).first()
-    if existing:
-        return (
-            jsonify({"ok": False, "error": "Character already exists."}),
-            HTTPStatus.CONFLICT,
+        char = Character(
+            user_id=current_user.id,
+            name=name, class_name=class_name, title=title,
         )
+        db.session.add(char)
+        db.session.flush()  # get char.id before creating flags
 
-    character = Player(
-        user_id=user_id,
-        class_id=class_name,
-        display_name=name,
-        title=title,
-        onboarding_stage="intro",
-    )
-    db.session.add(character)
-    db.session.commit()
+        db.session.add(CharacterFlag(character_id=char.id, flag_name="completed_intro", value=False))
+        db.session.commit()
 
-    return (
-        jsonify({"ok": True, "character": character.as_character_payload()}),
-        HTTPStatus.CREATED,
-    )
+        return jsonify(ok=True, character=_serialize_character(char)), 201
+    except Exception as e:
+        db.session.rollback()
+        print("[/api/characters] error:", repr(e))
+        return jsonify(error="internal_error"), 500
+
+# ---------------------- /api/quests/intro/complete ----------------------
+@game_bp.post("/api/quests/intro/complete")
+@login_required
+def api_complete_intro():
+    try:
+        char = Character.query.filter_by(user_id=current_user.id).first()
+        if not char:
+            return jsonify(error="No character found."), 404
+
+        flag = CharacterFlag.query.filter_by(character_id=char.id, flag_name="completed_intro").first()
+        if not flag:
+            flag = CharacterFlag(character_id=char.id, flag_name="completed_intro", value=True)
+            db.session.add(flag)
+        else:
+            flag.value = True
+
+        db.session.commit()
+        return jsonify(ok=True, flag={"completed_intro": True}), 200
+    except Exception as e:
+        db.session.rollback()
+        print("[/api/quests/intro/complete] error:", repr(e))
+        return jsonify(error="internal_error"), 500

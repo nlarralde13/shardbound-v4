@@ -1,0 +1,30 @@
+{
+  "scenes": [
+    {
+      "id": "farm_raid",
+      "bg": "/static/img/bg_warrior_farm.png",
+      "text": [
+        "You were a simple farmhand. The smell of hay and iron soil filled your days.",
+        "But tonight—the sky is red with fire.",
+        "Goblins swarm your village, torches raised, shrieking with bloodlust.",
+        "You seize a battered axe and stand your ground, but the raiders pour in from every direction.",
+        "Your neighbors fall. Your home burns. Wounded and alone, you flee into the dark woods."
+      ],
+      "actions": [
+        { "label": "Continue", "primary": true, "next": "greymoor_arrival" }
+      ]
+    },
+    {
+      "id": "greymoor_arrival",
+      "bg": "/static/img/bg_warrior_town.png",
+      "text": [
+        "By dawn, you reach the north road. Smoke still clings to your clothes.",
+        "A sign reads: “Greymoor Town — 2 miles.”",
+        "With nothing but resolve and a scarred axe, you stagger onward toward the only hope you know."
+      ],
+      "actions": [
+        { "label": "Enter Town", "primary": true, "event": "enter_town" }
+      ]
+    }
+  ]
+}

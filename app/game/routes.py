@@ -1,7 +1,9 @@
 # app/game/routes.py
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
-from ..models import db, Character, CharacterFlag
+
+from app import csrf
+from ..models import Character, CharacterFlag, Player, db
 
 game_bp = Blueprint("game", __name__)
 
@@ -32,14 +34,32 @@ def _flags_dict(character_id: int):
 def api_me():
     try:
         if not current_user or not getattr(current_user, "is_authenticated", False):
-            return jsonify({"authenticated": False}), 401
+            payload = {
+                "authenticated": False,
+                "user": None,
+                "has_character": False,
+                "character": None,
+                "flags": {},
+            }
+            return jsonify(payload), 401
 
-        # 1 char per user (for now)
+        player = getattr(current_user, "player", None)
+        if player is None:
+            player = Player.query.filter_by(user_id=current_user.id).first()
+
         char = Character.query.filter_by(user_id=current_user.id).first()
+        has_character = bool(player or char)
+
+        if player and hasattr(player, "as_character_payload"):
+            character_payload = player.as_character_payload()
+        else:
+            character_payload = _serialize_character(char)
+
         data = {
             "authenticated": True,
             "user": {"id": current_user.id, "username": _safe_username(current_user)},
-            "character": _serialize_character(char),
+            "has_character": has_character,
+            "character": character_payload,
             "flags": _flags_dict(char.id) if char else {},
         }
         return jsonify(data), 200
@@ -50,6 +70,7 @@ def api_me():
         return jsonify({"error": "internal_error"}), 500
 
 # ---------------------- /api/characters ----------------------
+@csrf.exempt
 @game_bp.post("/api/characters")
 @login_required
 def api_create_character():
@@ -83,6 +104,7 @@ def api_create_character():
         return jsonify(error="internal_error"), 500
 
 # ---------------------- /api/quests/intro/complete ----------------------
+@csrf.exempt
 @game_bp.post("/api/quests/intro/complete")
 @login_required
 def api_complete_intro():
